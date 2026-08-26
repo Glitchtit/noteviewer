@@ -125,3 +125,12 @@ button.danger { color: var(--danger); }
 .cm-callout { background: var(--bg-hover); border-left: 3px solid var(--accent); }
 .cm-callout-warning, .cm-callout-caution { border-left-color: var(--warn); }
 .cm-callout-danger, .cm-callout-error, .cm-callout-bug { border-left-color: var(--danger); }
+
+/* Task 3-7: overlays */
+.overlay-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 20; display: flex; justify-content: center; padding-top: 12vh; }
+.overlay-panel { width: min(560px, 92vw); max-height: 60vh; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; }
+.overlay-panel input { background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: 4px; padding: 8px 10px; font: inherit; }
+.overlay-results { list-style: none; margin: 8px 0 0; padding: 0; overflow-y: auto; }
+.overlay-results li button { display: block; width: 100%; text-align: left; padding: 6px 10px; }
+.overlay-results li.selected button { background: var(--bg-active); }
+.overlay-sub { color: var(--text-muted); margin-left: 8px; font-size: 12px; }

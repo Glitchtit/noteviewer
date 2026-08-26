@@ -5,6 +5,7 @@ import { ConflictBar } from './components/ConflictBar';
 import { EditorPane } from './components/EditorPane';
 import { FileTree } from './components/FileTree';
 import { ReadingView } from './components/ReadingView';
+import { SearchOverlay } from './components/SearchOverlay';
 import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
 import { resolveLink } from './resolveLink';
@@ -19,6 +20,7 @@ export function App() {
   const [offline, setOffline] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'edit' | 'read'>('edit');
+  const [overlay, setOverlay] = useState<'switcher' | 'search' | null>(null);
   const editor = useNoteEditor();
   const { path, title, content, revision, dirty, saving, conflict } = editor.state;
 
@@ -71,6 +73,12 @@ export function App() {
         e.preventDefault();
         void editor.saveNow();
         setViewMode((m) => (m === 'edit' ? 'read' : 'edit'));
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setOverlay('switcher');
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setOverlay('search');
       }
     }
     window.addEventListener('keydown', onKey);
@@ -187,6 +195,14 @@ export function App() {
           <div className="empty">Select a note</div>
         )}
       </main>
+      {overlay && (
+        <SearchOverlay
+          mode={overlay}
+          notePaths={noteNames.map((n) => `${n}.md`)}
+          onOpen={(p) => { setOverlay(null); void editor.open(p); }}
+          onClose={() => setOverlay(null)}
+        />
+      )}
     </div>
   );
 }
