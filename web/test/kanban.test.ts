@@ -27,6 +27,23 @@ describe('kanban', () => {
     expect(out).toContain('kanban-plugin');
     expect(out).toContain('%% kanban:settings');
   });
+
+  it('round-trips a preamble line, a plain list item, and a stray text line without dropping them', () => {
+    const docWithExtras = `${FM}Some preamble text\n\n## Todo\n\n- [ ] task one\n- plain item\nstray text line\n\n## Done\n\n- [x] shipped\n\n%% kanban:settings\n\`\`\`\n{"kanban-plugin":"board"}\n\`\`\`\n%%`;
+    const p = parseKanban(docWithExtras);
+    expect(p.preamble).toEqual(['Some preamble text']);
+    expect(p.columns[0]!.items).toEqual([
+      { text: 'task one', done: false },
+      { text: 'plain item', done: false, plain: true },
+    ]);
+    expect(p.columns[0]!.extras).toEqual(['stray text line']);
+
+    const out = serializeKanban(p);
+    expect(out).toContain('Some preamble text');
+    expect(out).toContain('- plain item');
+    expect(out).toContain('stray text line');
+    expect(parseKanban(out)).toEqual(p);
+  });
 });
 
 function itemsDoc(items: string[]): KanbanDoc {

@@ -47,15 +47,17 @@ export function KanbanBoard({ content, onChange }: KanbanBoardProps) {
                 moveCard(ci, ii);
               }}
             >
-              <input
-                type="checkbox"
-                checked={item.done}
-                onChange={() => {
-                  const next = cloneDoc();
-                  next.columns[ci]!.items[ii] = { ...item, done: !item.done };
-                  commit(next);
-                }}
-              />
+              {!item.plain && (
+                <input
+                  type="checkbox"
+                  checked={item.done}
+                  onChange={() => {
+                    const next = cloneDoc();
+                    next.columns[ci]!.items[ii] = { ...item, done: !item.done };
+                    commit(next);
+                  }}
+                />
+              )}
               <span className={item.done ? 'kanban-done' : ''}>{item.text}</span>
             </div>
           ))}

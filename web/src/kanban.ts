@@ -1,15 +1,25 @@
 export interface KanbanItem {
   text: string;
   done: boolean;
+  // A plain `- text` list item (no checkbox), kept as a card so it round-trips
+  // instead of being silently dropped; serialized back without `[ ]`/`[x]`.
+  plain?: boolean;
 }
 export interface KanbanColumn {
   title: string;
   items: KanbanItem[];
+  // Unrecognized non-blank lines within this column (not a heading, task
+  // item, or plain list item), kept verbatim and re-emitted after the
+  // column's items so they aren't silently dropped on the first board write.
+  extras?: string[];
 }
 export interface KanbanDoc {
   frontmatter: string;
   columns: KanbanColumn[];
   trailer: string;
+  // Non-blank lines that appear after the frontmatter but before the first
+  // `##` column heading, kept verbatim and re-emitted in the same spot.
+  preamble?: string[];
 }
 
 const FM = /^---\n[\s\S]*?\n---\n?/;
@@ -30,18 +40,32 @@ export function parseKanban(content: string): KanbanDoc {
     body = body.slice(0, trailerIdx);
   }
   const columns: KanbanColumn[] = [];
+  const preamble: string[] = [];
   for (const line of body.split('\n')) {
+    if (!line.trim()) continue;
     const h = /^##\s+(.*)$/.exec(line);
     if (h) {
       columns.push({ title: h[1]!.trim(), items: [] });
       continue;
     }
-    const item = /^-\s+\[([ xX])\]\s+(.*)$/.exec(line);
-    if (item && columns.length) {
-      columns[columns.length - 1]!.items.push({ text: item[2]!.trim(), done: item[1]!.toLowerCase() === 'x' });
+    if (!columns.length) {
+      preamble.push(line);
+      continue;
     }
+    const col = columns[columns.length - 1]!;
+    const item = /^-\s+\[([ xX])\]\s+(.*)$/.exec(line);
+    if (item) {
+      col.items.push({ text: item[2]!.trim(), done: item[1]!.toLowerCase() === 'x' });
+      continue;
+    }
+    const plain = /^-\s+(.*)$/.exec(line);
+    if (plain) {
+      col.items.push({ text: plain[1]!.trim(), done: false, plain: true });
+      continue;
+    }
+    (col.extras ??= []).push(line);
   }
-  return { frontmatter, columns, trailer };
+  return { frontmatter, columns, trailer, preamble };
 }
 
 export function moveCardIn(
@@ -63,11 +87,13 @@ export function moveCardIn(
 
 export function serializeKanban(doc: KanbanDoc): string {
   const cols = doc.columns.map((c) => {
-    const items = c.items.map((i) => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n');
-    return items ? `## ${c.title}\n\n${items}` : `## ${c.title}`;
+    const items = c.items.map((i) => (i.plain ? `- ${i.text}` : `- [${i.done ? 'x' : ' '}] ${i.text}`));
+    const body = [...items, ...(c.extras ?? [])].join('\n');
+    return body ? `## ${c.title}\n\n${body}` : `## ${c.title}`;
   });
   const parts: string[] = [];
   if (doc.frontmatter) parts.push(doc.frontmatter);
+  if (doc.preamble?.length) parts.push(doc.preamble.join('\n'));
   parts.push(cols.join('\n\n'));
   if (doc.trailer) parts.push(doc.trailer);
   return `${parts.join('\n\n')}\n`;

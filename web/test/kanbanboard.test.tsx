@@ -28,4 +28,11 @@ describe('KanbanBoard', () => {
     fireEvent.submit(input.closest('form')!);
     expect(onChange.mock.calls[0]![0]).toContain('- [ ] new card');
   });
+
+  it('renders a plain (unrecognized) list item as a card with no checkbox', () => {
+    const plainDoc = '---\nkanban-plugin: board\n---\n\n## Todo\n\n- plain item\n- [ ] task one\n';
+    render(<KanbanBoard content={plainDoc} onChange={() => {}} />);
+    expect(screen.getByText('plain item')).toBeTruthy();
+    expect(screen.getAllByRole('checkbox').length).toBe(1);
+  });
 });
