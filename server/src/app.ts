@@ -21,7 +21,12 @@ export interface AppOpts {
 }
 
 export async function buildApp(opts: AppOpts): Promise<FastifyInstance> {
-  const app = Fastify({ logger: process.env['NODE_ENV'] === 'production' });
+  const app = Fastify({
+    logger: process.env['NODE_ENV'] === 'production',
+    // SSE clients (`/api/events`) hold hijacked, in-flight connections open
+    // indefinitely; without this, app.close() hangs waiting for them to end.
+    forceCloseConnections: true,
+  });
   const index = new VaultIndex(opts.vaultRoot);
   await index.init();
   const bus = new VaultBus();
