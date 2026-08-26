@@ -87,7 +87,11 @@ export class VaultIndex {
     return out.sort();
   }
 
-  search(_q: string): SearchResult[] {
-    return []; // implemented in the search task
+  search(q: string): SearchResult[] {
+    if (!q.trim()) return [];
+    return this.mini
+      .search(q)
+      .slice(0, 50)
+      .map((r) => ({ path: r.id as string, title: r['title'] as string, score: r.score }));
   }
 }
