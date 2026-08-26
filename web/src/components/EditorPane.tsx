@@ -2,10 +2,11 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
-import { EditorState } from '@codemirror/state';
+import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { livePreview } from '../cm/livePreview';
 import { cmTheme } from '../cm/theme';
+import { wikilinkExtensions } from '../cm/wikilinkPlugin';
 
 export interface EditorPaneHandle {
   view: EditorView | null;
@@ -16,10 +17,12 @@ export interface EditorPaneProps {
   initialContent: string;
   onChange(text: string): void;
   onSave(): void;
+  onOpenLink?(target: string): void;
+  noteNames?: string[];
 }
 
 export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function EditorPane(
-  { initialContent, onChange, onSave },
+  { initialContent, onChange, onSave, onOpenLink, noteNames },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -28,6 +31,10 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
   onChangeRef.current = onChange;
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
+  const onOpenLinkRef = useRef(onOpenLink);
+  onOpenLinkRef.current = onOpenLink;
+  const noteNamesRef = useRef(noteNames);
+  noteNamesRef.current = noteNames;
 
   useImperativeHandle(ref, () => ({
     get view() {
@@ -36,24 +43,33 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
   }), []);
 
   useEffect(() => {
+    const extensions: Extension[] = [
+      history(),
+      keymap.of([
+        { key: 'Mod-s', preventDefault: true, run: () => { onSaveRef.current(); return true; } },
+        ...defaultKeymap,
+        ...historyKeymap,
+      ]),
+      markdown({ base: markdownLanguage, codeLanguages: languages }),
+      EditorView.lineWrapping,
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged) onChangeRef.current(u.state.doc.toString());
+      }),
+      cmTheme,
+      livePreview,
+    ];
+    if (onOpenLinkRef.current) {
+      extensions.push(
+        ...wikilinkExtensions({
+          onOpen: (t) => onOpenLinkRef.current?.(t),
+          noteNames: () => noteNamesRef.current ?? [],
+        }),
+      );
+    }
     const view = new EditorView({
       state: EditorState.create({
         doc: initialContent,
-        extensions: [
-          history(),
-          keymap.of([
-            { key: 'Mod-s', preventDefault: true, run: () => { onSaveRef.current(); return true; } },
-            ...defaultKeymap,
-            ...historyKeymap,
-          ]),
-          markdown({ base: markdownLanguage, codeLanguages: languages }),
-          EditorView.lineWrapping,
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged) onChangeRef.current(u.state.doc.toString());
-          }),
-          cmTheme,
-          livePreview,
-        ],
+        extensions,
       }),
       parent: containerRef.current!,
     });

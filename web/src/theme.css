@@ -109,3 +109,8 @@ button.danger { color: var(--danger); }
 .callout-danger, .callout-error, .callout-bug { border-left-color: var(--danger); }
 .mermaid-diagram { display: flex; justify-content: center; padding: 8px 0; }
 .mermaid-diagram svg { max-width: 100%; }
+
+/* Task 3-4: wikilinks & tags in editor */
+.cm-wikilink { color: var(--accent); cursor: pointer; }
+.cm-wikilink:hover { text-decoration: underline; }
+.cm-tag { color: var(--accent); background: var(--bg-hover); border-radius: 8px; padding: 0 6px; }

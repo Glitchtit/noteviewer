@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TreeNode } from '@noteviewer/shared';
 import { api, ApiError, onNetworkError } from './api';
 import { ConflictBar } from './components/ConflictBar';
@@ -7,6 +7,7 @@ import { FileTree } from './components/FileTree';
 import { ReadingView } from './components/ReadingView';
 import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
+import { resolveLink } from './resolveLink';
 
 type Naming = { mode: 'create' } | { mode: 'rename'; from: string } | null;
 
@@ -24,6 +25,16 @@ export function App() {
   const refreshTree = useCallback(() => {
     api.tree().then(setTree).catch(() => {});
   }, []);
+
+  const noteNames = useMemo(() => {
+    const out: string[] = [];
+    const walk = (n: TreeNode) => {
+      if (n.type === 'note') out.push(n.path.replace(/\.md$/, ''));
+      (n.children ?? []).forEach(walk);
+    };
+    if (tree) walk(tree);
+    return out;
+  }, [tree]);
 
   useEffect(() => {
     onNetworkError(() => setOffline(true));
@@ -167,6 +178,8 @@ export function App() {
               initialContent={content}
               onChange={editor.handleChange}
               onSave={() => void editor.saveNow()}
+              onOpenLink={(t) => { const r = tree && resolveLink(tree, t); if (r) void editor.open(r); }}
+              noteNames={noteNames}
             />
           )
         ) : (
