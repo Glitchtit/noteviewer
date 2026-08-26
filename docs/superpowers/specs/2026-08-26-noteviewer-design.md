@@ -76,8 +76,8 @@ All JSON unless noted.
 - `DELETE /api/note/*path` — move to the vault's `.trash/` (never unlink)
 - `POST /api/rename` — rename/move; rewrites wikilinks in other notes that
   point at the renamed note (Obsidian behavior)
-- `GET /api/search?q=` — full-text + filename results (MiniSearch or
-  FlexSearch server-side)
+- `GET /api/search?q=` — full-text + filename results (MiniSearch,
+  server-side)
 - `GET /api/file/*path` — attachments (images, PDFs) streamed with correct
   MIME type
 - `GET /api/events` — SSE: `note-changed`, `tree-changed` events from the
