@@ -59,6 +59,15 @@ describe('GET /api/note/*', () => {
     const { app } = await appFor({ 'dir.md/inner.md': 'x' });
     expect((await app.inject({ url: '/api/note/dir.md' })).statusCode).toBe(404);
   });
+
+  it('returns 400 for malformed percent-encoding in URL', async () => {
+    // Fastify pre-decodes path parameters during routing; `GET /api/note/50%.md` has incomplete
+    // percent-encoding (`%` without two hex digits), triggering FST_ERR_BAD_URL before the handler
+    // runs. Our relParam catch is defense-in-depth, reachable for double-encoded sequences like
+    // `foo%25ZZ.md`. This test ensures the framework-level 400 is not silently changed.
+    const { app } = await appFor({});
+    expect((await app.inject({ url: '/api/note/50%.md' })).statusCode).toBe(400);
+  });
 });
 
 describe('PUT /api/note/*', () => {
