@@ -30,4 +30,13 @@ describe('parseNote', () => {
   it('returns empty results for an empty note', () => {
     expect(parseNote('')).toEqual({ title: null, tags: [], links: [], headings: [] });
   });
+
+  it('handles CRLF line endings correctly', () => {
+    const p = parseNote('# Title\r\n\r\n## Section\r\ntext');
+    expect(p.title).toBe('Title');
+    expect(p.headings).toEqual([
+      { level: 1, text: 'Title' },
+      { level: 2, text: 'Section' },
+    ]);
+  });
 });

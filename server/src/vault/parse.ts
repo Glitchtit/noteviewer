@@ -36,7 +36,7 @@ export function parseNote(content: string): ParsedNote {
   for (const m of body.matchAll(INLINE_TAG)) tags.add(m[1]!);
 
   const headings: Heading[] = [];
-  for (const line of body.split('\n')) {
+  for (const line of body.split(/\r?\n/)) {
     const h = HEADING.exec(line);
     if (h) headings.push({ level: h[1]!.length, text: h[2]!.trim() });
   }
