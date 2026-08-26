@@ -9,11 +9,14 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p server --noEmit",
+    "typecheck": "tsc -p server --noEmit && tsc -p web --noEmit",
     "dev": "npm run dev -w server"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.0.0",
     "@types/node": "^26.3.0",
+    "jsdom": "^26.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }
