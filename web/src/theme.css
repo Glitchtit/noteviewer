@@ -118,3 +118,10 @@ button.danger { color: var(--danger); }
 /* Task 3-5: inline widgets */
 .cm-checkbox { accent-color: var(--accent); margin-right: 4px; }
 .cm-image { max-width: min(100%, 480px); display: block; margin: 4px 0; border-radius: 4px; }
+
+/* Task 3-6: block widgets */
+.cm-mermaid { display: flex; justify-content: center; padding: 8px 0; }
+.cm-mermaid svg { max-width: 100%; }
+.cm-callout { background: var(--bg-hover); border-left: 3px solid var(--accent); }
+.cm-callout-warning, .cm-callout-caution { border-left-color: var(--warn); }
+.cm-callout-danger, .cm-callout-error, .cm-callout-bug { border-left-color: var(--danger); }

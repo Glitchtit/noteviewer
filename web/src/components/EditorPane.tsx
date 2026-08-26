@@ -4,6 +4,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
+import { blockWidgets } from '../cm/blockWidgets';
 import { inlineWidgets } from '../cm/inlineWidgets';
 import { livePreview } from '../cm/livePreview';
 import { cmTheme } from '../cm/theme';
@@ -62,6 +63,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
       cmTheme,
       livePreview,
       inlineWidgets({ resolveFile: (t) => resolveFileRef.current?.(t) }),
+      blockWidgets,
     ];
     if (onOpenLinkRef.current) {
       extensions.push(
