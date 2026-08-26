@@ -32,6 +32,20 @@ function selectionTouchesExtent(view: EditorView, from: number, to: number): boo
   return false;
 }
 
+// QuoteMark is special-cased to a strict per-line check rather than the
+// parent-extent check above. A multi-line blockquote is a single Blockquote
+// (or, under lazy continuation, a single Paragraph) syntax node spanning every
+// quoted line, so using the parent's extent would reveal every `>` in the
+// quote whenever the cursor is anywhere inside it. The contract for quote
+// marks is line-scoped: only the `>` on the cursor's own line should reveal.
+function selectionTouchesLine(view: EditorView, pos: number): boolean {
+  const line = view.state.doc.lineAt(pos);
+  for (const r of view.state.selection.ranges) {
+    if (r.from <= line.to && r.to >= line.from) return true;
+  }
+  return false;
+}
+
 export function buildHideDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   for (const { from, to } of view.visibleRanges) {
@@ -40,10 +54,16 @@ export function buildHideDecorations(view: EditorView): DecorationSet {
       to,
       enter: (node) => {
         if (!HIDDEN_MARKS.has(node.name)) return;
-        const parent = node.node.parent;
-        const extentFrom = parent ? parent.from : node.from;
-        const extentTo = parent ? parent.to : node.to;
-        if (selectionTouchesExtent(view, extentFrom, extentTo)) return;
+        let touched: boolean;
+        if (node.name === 'QuoteMark') {
+          touched = selectionTouchesLine(view, node.from);
+        } else {
+          const parent = node.node.parent;
+          const extentFrom = parent ? parent.from : node.from;
+          const extentTo = parent ? parent.to : node.to;
+          touched = selectionTouchesExtent(view, extentFrom, extentTo);
+        }
+        if (touched) return;
         let end = node.to;
         // HeaderMark: also swallow the single space after `#`
         if (node.name === 'HeaderMark' && view.state.doc.sliceString(end, end + 1) === ' ') end += 1;
