@@ -1,4 +1,5 @@
 import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
+import { syntaxTree } from '@codemirror/language';
 import { RangeSetBuilder, type Extension } from '@codemirror/state';
 import {
   Decoration,
@@ -10,6 +11,20 @@ import {
 
 const WIKI = /\[\[([^\]|#\n]+)(#[^\]|\n]*)?(?:\|([^\]\n]*))?\]\]/g;
 const TAG = /(^|\s)#([A-Za-z0-9_][\w/-]*)/g;
+
+// Fenced/indented code blocks and inline `code` spans should not have `#foo`
+// tokens inside them treated as tags (e.g. a shell/Python comment in a fenced
+// snippet). Walk up from the match position and bail if any ancestor is a
+// code node.
+const CODE_NODE_NAMES = new Set(['FencedCode', 'CodeBlock', 'CodeText', 'InlineCode']);
+
+function insideCode(view: EditorView, pos: number): boolean {
+  const start = syntaxTree(view.state).resolveInner(pos, 1);
+  for (let n: typeof start | null = start; n; n = n.parent) {
+    if (CODE_NODE_NAMES.has(n.name)) return true;
+  }
+  return false;
+}
 
 export interface WikilinkOpts {
   onOpen(target: string): void;
@@ -52,6 +67,7 @@ export function buildWikilinkDecorations(view: EditorView, _names: () => string[
     }
     for (const m of text.matchAll(TAG)) {
       const start = from + m.index! + m[1]!.length;
+      if (insideCode(view, start)) continue;
       found.push({
         f: start,
         t: start + 1 + m[2]!.length,
