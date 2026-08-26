@@ -142,3 +142,11 @@ button.danger { color: var(--danger); }
 .panel-item:hover { color: var(--text); background: var(--bg-hover); }
 .panel-empty { color: var(--text-muted); font-size: 12px; padding: 2px 12px; }
 @media (max-width: 768px) { .right-panel { display: none; } }
+
+/* Task 3-9: kanban */
+.kanban { flex: 1; display: flex; gap: 12px; padding: 16px; overflow-x: auto; align-items: flex-start; }
+.kanban-col { background: var(--bg-deep); border: 1px solid var(--border); border-radius: 8px; padding: 8px; width: 260px; flex-shrink: 0; }
+.kanban-col-title { font-weight: 700; padding: 4px 6px 8px; }
+.kanban-card { background: var(--bg-hover); border-radius: 6px; padding: 8px; margin-bottom: 6px; cursor: grab; display: flex; gap: 8px; align-items: baseline; }
+.kanban-done { text-decoration: line-through; color: var(--text-muted); }
+.kanban input[type='text'], .kanban form input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font: inherit; }

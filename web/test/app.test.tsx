@@ -28,12 +28,31 @@ vi.mock('../src/components/ReadingView', () => ({
   ),
 }));
 
+vi.mock('../src/components/KanbanBoard', () => ({
+  KanbanBoard: ({ content, onChange }: { content: string; onChange(md: string): void }) => (
+    <div data-testid="mock-kanban-board">
+      <span data-testid="mock-kanban-content">{content}</span>
+      <button
+        data-testid="mock-kanban-change"
+        onClick={() => onChange('---\nkanban-plugin: board\n---\n\n## Todo\n\n- [x] task one\n')}
+      >
+        change
+      </button>
+    </div>
+  ),
+}));
+
 const mocked = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const tree = {
   name: '', path: '', type: 'folder' as const,
-  children: [{ name: 'a.md', path: 'a.md', type: 'note' as const }],
+  children: [
+    { name: 'a.md', path: 'a.md', type: 'note' as const },
+    { name: 'b.md', path: 'b.md', type: 'note' as const },
+  ],
 };
+
+const KANBAN_CONTENT = '---\nkanban-plugin: board\n---\n\n## Todo\n\n- [ ] task one\n';
 
 function noteResponse(path: string, content: string) {
   return {
@@ -154,5 +173,67 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Really delete?' }));
     await waitFor(() => expect(screen.getByTestId('action-error')).toBeTruthy());
     expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
+  });
+
+  it('a kanban note opens directly in board mode, with no board toggle for plain notes', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'plain note'));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    expect(screen.queryByTestId('mock-kanban-board')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Toggle board view' })).toBeNull();
+
+    mocked.note!.mockResolvedValue(noteResponse('b.md', KANBAN_CONTENT));
+    fireEvent.click(screen.getByRole('button', { name: 'b' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('b'));
+    expect(screen.getByTestId('mock-kanban-board')).toBeTruthy();
+    expect(screen.queryByTestId('mock-editor-change')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Toggle board view' })).toBeTruthy();
+  });
+
+  it('the board toggle switches a kanban note between board and raw editor', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', KANBAN_CONTENT));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('mock-kanban-board')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle board view' }));
+    expect(screen.queryByTestId('mock-kanban-board')).toBeNull();
+    expect(screen.getByTestId('mock-editor-change')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle board view' }));
+    expect(screen.getByTestId('mock-kanban-board')).toBeTruthy();
+  });
+
+  it('boardMode resets to true when the path changes', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', KANBAN_CONTENT));
+    mocked.rename!.mockResolvedValue({ rewritten: [] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('mock-kanban-board')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle board view' }));
+    expect(screen.queryByTestId('mock-kanban-board')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    const input = screen.getByPlaceholderText('path/note.md') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'b.md' } });
+    mocked.note!.mockResolvedValue(noteResponse('b.md', KANBAN_CONTENT));
+    fireEvent.submit(input.closest('form')!);
+
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('b'));
+    expect(screen.getByTestId('mock-kanban-board')).toBeTruthy();
+  });
+
+  it('board edits write through editor.applyLocalContent, marking the note dirty', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', KANBAN_CONTENT));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('mock-kanban-board')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('mock-kanban-change'));
+
+    expect(screen.getByTestId('mock-kanban-content').textContent).toContain('- [x] task one');
+    expect(screen.getByTestId('save-state').textContent).toBe('Edited');
   });
 });

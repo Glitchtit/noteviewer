@@ -62,6 +62,18 @@ describe('useNoteEditor', () => {
     expect(result.current.state.content).toBe('body');
   });
 
+  it('applyLocalContent updates state.content and autosaves like handleChange', async () => {
+    const { result } = await openNote('h1', 'body');
+    mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'h2' });
+    act(() => result.current.applyLocalContent('board edited'));
+    expect(result.current.getBuffer()).toBe('board edited');
+    expect(result.current.state.content).toBe('board edited');
+    expect(result.current.state.dirty).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(mocked.save).toHaveBeenCalledWith('a.md', 'board edited', 'h1');
+    expect(result.current.state.dirty).toBe(false);
+  });
+
   it('autosaves 1000ms after the last change with the base hash', async () => {
     const { result } = await openNote();
     mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'h2' });

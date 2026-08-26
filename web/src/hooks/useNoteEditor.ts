@@ -101,6 +101,15 @@ export function useNoteEditor() {
     schedule();
   }, [schedule]);
 
+  // Like handleChange, but also updates state.content — for callers (e.g. the
+  // kanban board) that keep no buffer of their own and re-render straight
+  // from state.content on every edit.
+  const applyLocalContent = useCallback((text: string) => {
+    bufferRef.current = text;
+    setState((s) => ({ ...s, content: text, dirty: true }));
+    schedule();
+  }, [schedule]);
+
   const external = useCallback(async (path: string) => {
     if (inflightRef.current) await inflightRef.current;
     if (path !== stateRef.current.path) return;
@@ -193,6 +202,6 @@ export function useNoteEditor() {
   const getBuffer = useCallback(() => bufferRef.current, []);
 
   return {
-    state, open, handleChange, saveNow: save, external, keepTheirs, keepMine, saveAsCopy, clear, getBuffer,
+    state, open, handleChange, applyLocalContent, saveNow: save, external, keepTheirs, keepMine, saveAsCopy, clear, getBuffer,
   };
 }

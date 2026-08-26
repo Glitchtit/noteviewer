@@ -4,11 +4,13 @@ import { api, ApiError, onNetworkError } from './api';
 import { ConflictBar } from './components/ConflictBar';
 import { EditorPane, type EditorPaneHandle } from './components/EditorPane';
 import { FileTree } from './components/FileTree';
+import { KanbanBoard } from './components/KanbanBoard';
 import { ReadingView } from './components/ReadingView';
 import { RightPanel } from './components/RightPanel';
 import { SearchOverlay } from './components/SearchOverlay';
 import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
+import { isKanbanNote } from './kanban';
 import { resolveLink } from './resolveLink';
 
 type Naming = { mode: 'create' } | { mode: 'rename'; from: string } | null;
@@ -21,11 +23,13 @@ export function App() {
   const [offline, setOffline] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'edit' | 'read'>('edit');
+  const [boardMode, setBoardMode] = useState(true);
   const [overlay, setOverlay] = useState<'switcher' | 'search' | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const editorRef = useRef<EditorPaneHandle>(null);
   const editor = useNoteEditor();
   const { path, title, content, revision, dirty, saving, conflict } = editor.state;
+  const kanban = isKanbanNote(content);
 
   const refreshTree = useCallback(() => {
     api.tree().then(setTree).catch(() => {});
@@ -64,6 +68,7 @@ export function App() {
 
   useEffect(() => refreshTree(), [refreshTree]);
   useEffect(() => setConfirmingDelete(false), [path]);
+  useEffect(() => setBoardMode(true), [path]);
 
   // Ctrl/Cmd+E toggles reading mode globally. state.content is only the
   // last-applied snapshot (set by open/external/keepTheirs/saveAsCopy) — it
@@ -162,6 +167,11 @@ export function App() {
               <button aria-label="Toggle right panel" onClick={() => setPanelOpen((o) => !o)}>
                 Panel
               </button>
+              {kanban && (
+                <button aria-label="Toggle board view" onClick={() => setBoardMode((b) => !b)}>
+                  {boardMode ? 'Raw' : 'Board'}
+                </button>
+              )}
               <button onClick={() => { setActionError(null); setNaming({ mode: 'rename', from: path }); }}>Rename</button>
               {confirmingDelete ? (
                 <button className="danger" onClick={() => void doDelete()}>Really delete?</button>
@@ -184,7 +194,9 @@ export function App() {
           />
         )}
         {path ? (
-          viewMode === 'read' ? (
+          kanban && boardMode ? (
+            <KanbanBoard content={content} onChange={(md) => editor.applyLocalContent(md)} />
+          ) : viewMode === 'read' ? (
             <ReadingView content={editor.getBuffer()} tree={tree} onOpenNote={(p) => void editor.open(p)} />
           ) : (
             <EditorPane
