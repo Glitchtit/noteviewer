@@ -75,7 +75,27 @@ function build(state: EditorState): DecorationSet {
     const end = start + m[0].length;
     if (regionTouched(state, start, end)) continue;
     if (insideCode(state, start)) continue;
-    entries.push({ f: start, t: end, d: Decoration.replace({ widget: new BlockMathWidget(m[1]!.trim()), block: true }) });
+
+    // Block-level `Decoration.replace` requires the range to be aligned to
+    // whole lines (from a line's start to a line's end). A `$$...$$` span
+    // that shares a line with other text doesn't satisfy that, and CM6's
+    // line/DOM structure gets corrupted if we force `block: true` on it
+    // anyway (the containing line is split and the widget spliced in as an
+    // orphaned sibling, outside any `.cm-line`). So: use a block widget only
+    // when aligned; when the span shares just its own single line with other
+    // text, fall back to a non-block (inline) replace, which still renders
+    // KaTeX in `displayMode`; when it's unaligned *and* crosses a line break
+    // (e.g. `$$` opening mid-line and closing on a later line), skip
+    // decorating it entirely rather than risk the same corruption.
+    const fromLine = doc.lineAt(start);
+    const toLine = doc.lineAt(Math.min(end, doc.length));
+    const aligned = start === fromLine.from && end === toLine.to;
+    const sameLine = fromLine.number === toLine.number;
+    if (!aligned && !sameLine) continue;
+
+    const widget = new BlockMathWidget(m[1]!.trim());
+    const deco = aligned ? Decoration.replace({ widget, block: true }) : Decoration.replace({ widget });
+    entries.push({ f: start, t: end, d: deco });
   }
 
   syntaxTree(state).iterate({
@@ -92,20 +112,28 @@ function build(state: EditorState): DecorationSet {
     },
   });
 
+  // Single forward pass: track the current quote-run's callout class (or
+  // null) as we go, resolving it once at the head of each run rather than
+  // re-walking backward from every line (which made a K-line blockquote cost
+  // O(K^2), repaid on every keystroke/cursor move).
+  let runClass: string | null = null;
+  let prevWasQuote = false;
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
-    if (!line.text.startsWith('>')) continue;
-    // find the head of this quote run
-    let headIdx = i;
-    while (headIdx > 1 && doc.line(headIdx - 1).text.startsWith('>')) headIdx--;
-    const head = doc.line(headIdx);
-    const m = CALLOUT_HEAD.exec(head.text);
-    if (!m) continue;
-    entries.push({
-      f: line.from,
-      t: line.from,
-      d: Decoration.line({ class: `cm-callout cm-callout-${m[1]!.toLowerCase()}` }),
-    });
+    const isQuote = line.text.startsWith('>');
+    if (!isQuote) {
+      runClass = null;
+      prevWasQuote = false;
+      continue;
+    }
+    if (!prevWasQuote) {
+      const m = CALLOUT_HEAD.exec(line.text);
+      runClass = m ? `cm-callout cm-callout-${m[1]!.toLowerCase()}` : null;
+    }
+    prevWasQuote = true;
+    if (runClass) {
+      entries.push({ f: line.from, t: line.from, d: Decoration.line({ class: runClass }) });
+    }
   }
 
   entries.sort((a, b) => a.f - b.f || a.t - b.t);

@@ -60,4 +60,31 @@ describe('block widgets', () => {
     expect(view.dom.querySelector('.katex-display')).toBeFalsy();
     view.destroy();
   });
+
+  it('renders mid-line $$...$$ as inline (non-block) display math without corrupting line structure', () => {
+    const doc = 'before $$x^2$$ after\n\nelse';
+    const view = viewWith(doc, doc.length);
+    expect(view.dom.querySelector('.katex-display')).toBeTruthy();
+    // The source line must stay a single `.cm-line`, not be split around an
+    // orphaned block-widget sibling.
+    expect(view.dom.querySelectorAll('.cm-line').length).toBe(3);
+    view.destroy();
+  });
+
+  it('does not decorate a $$ that opens mid-line and closes on another line', () => {
+    const doc = 'z\n\ntext $$foo\nbar$$ end\n\nq';
+    const view = viewWith(doc, doc.length);
+    expect(view.dom.querySelector('.katex-display')).toBeFalsy();
+    // Both source lines must stay intact as their own `.cm-line`s.
+    expect(view.dom.querySelectorAll('.cm-line').length).toBe(6);
+    view.destroy();
+  });
+
+  it('classes all lines of a multi-line callout without losing the head', () => {
+    const doc = '> [!warning] head\n> line2\n> line3\n\nx';
+    const view = viewWith(doc, doc.length);
+    const callouts = view.dom.querySelectorAll('.cm-callout-warning');
+    expect(callouts.length).toBe(3);
+    view.destroy();
+  });
 });
