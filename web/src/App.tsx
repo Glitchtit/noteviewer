@@ -4,6 +4,7 @@ import { api, ApiError, onNetworkError } from './api';
 import { ConflictBar } from './components/ConflictBar';
 import { EditorPane } from './components/EditorPane';
 import { FileTree } from './components/FileTree';
+import { ReadingView } from './components/ReadingView';
 import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
 
@@ -16,6 +17,7 @@ export function App() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'edit' | 'read'>('edit');
   const editor = useNoteEditor();
   const { path, title, content, revision, dirty, saving, conflict } = editor.state;
 
@@ -46,6 +48,22 @@ export function App() {
 
   useEffect(() => refreshTree(), [refreshTree]);
   useEffect(() => setConfirmingDelete(false), [path]);
+
+  // Ctrl/Cmd+E toggles reading mode globally. Flush any dirty buffer first
+  // since editor.state.content only reflects the last-applied save, not
+  // unsaved keystrokes — saveNow() closes that gap before ReadingView reads it.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        void editor.saveNow();
+        setViewMode((m) => (m === 'edit' ? 'read' : 'edit'));
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ensureMd = (name: string) => (name.endsWith('.md') ? name : `${name}.md`);
 
@@ -111,6 +129,12 @@ export function App() {
           <span className="title" data-testid="note-title">{path ? title : 'noteviewer'}</span>
           {path && (
             <>
+              <button
+                aria-label="Toggle reading mode"
+                onClick={() => { void editor.saveNow(); setViewMode((m) => (m === 'edit' ? 'read' : 'edit')); }}
+              >
+                {viewMode === 'edit' ? 'Read' : 'Edit'}
+              </button>
               <button onClick={() => { setActionError(null); setNaming({ mode: 'rename', from: path }); }}>Rename</button>
               {confirmingDelete ? (
                 <button className="danger" onClick={() => void doDelete()}>Really delete?</button>
@@ -133,12 +157,16 @@ export function App() {
           />
         )}
         {path ? (
-          <EditorPane
-            key={`${path}#${revision}`}
-            initialContent={content}
-            onChange={editor.handleChange}
-            onSave={() => void editor.saveNow()}
-          />
+          viewMode === 'read' ? (
+            <ReadingView content={content} tree={tree} onOpenNote={(p) => void editor.open(p)} />
+          ) : (
+            <EditorPane
+              key={`${path}#${revision}`}
+              initialContent={content}
+              onChange={editor.handleChange}
+              onSave={() => void editor.saveNow()}
+            />
+          )
         ) : (
           <div className="empty">Select a note</div>
         )}
