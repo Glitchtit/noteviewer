@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
-import { api } from '../src/api';
+import { api, ApiError } from '../src/api';
 
 vi.mock('../src/api', async () => {
   const actual = await vi.importActual<typeof import('../src/api')>('../src/api');
@@ -79,5 +79,29 @@ describe('App', () => {
     mocked.note!.mockResolvedValue(noteResponse('b.md', 'x'));
     fireEvent.submit(input.closest('form')!);
     await waitFor(() => expect(mocked.rename).toHaveBeenCalledWith('a.md', 'b.md'));
+  });
+
+  it('shows error when create fails with 409', async () => {
+    mocked.create!.mockRejectedValue(new ApiError(409, 'conflict'));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ New' }));
+    const input = screen.getByPlaceholderText('path/note.md');
+    fireEvent.change(input, { target: { value: 'new' } });
+    fireEvent.submit(input.closest('form')!);
+    await waitFor(() => expect(screen.getByTestId('action-error')).toBeTruthy());
+    expect(screen.getByTestId('action-error').textContent).toBe('A note with that name already exists.');
+    expect(input).toBeTruthy();
+  });
+
+  it('shows error when delete fails', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    mocked.remove!.mockRejectedValue(new ApiError(500, 'boom'));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Really delete?' }));
+    await waitFor(() => expect(screen.getByTestId('action-error')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
   });
 });

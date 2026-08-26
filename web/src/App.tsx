@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TreeNode } from '@noteviewer/shared';
-import { api } from './api';
+import { api, ApiError } from './api';
 import { EditorPane } from './components/EditorPane';
 import { FileTree } from './components/FileTree';
 import { useNoteEditor } from './hooks/useNoteEditor';
@@ -11,6 +11,7 @@ export function App() {
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [naming, setNaming] = useState<Naming>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const editor = useNoteEditor();
   const { path, title, content, revision, dirty, saving } = editor.state;
 
@@ -24,31 +25,50 @@ export function App() {
   const ensureMd = (name: string) => (name.endsWith('.md') ? name : `${name}.md`);
 
   async function submitName(value: string) {
+    setActionError(null);
     const target = ensureMd(value);
-    if (naming?.mode === 'create') {
-      const res = await api.create(target);
-      await editor.open(res.path);
-    } else if (naming?.mode === 'rename') {
-      await api.rename(naming.from, target);
-      await editor.open(target);
+    try {
+      if (naming?.mode === 'create') {
+        const res = await api.create(target);
+        await editor.open(res.path);
+      } else if (naming?.mode === 'rename') {
+        await api.rename(naming.from, target);
+        await editor.open(target);
+      }
+      setNaming(null);
+      refreshTree();
+    } catch (err) {
+      const message = err instanceof ApiError
+        ? err.status === 409
+          ? 'A note with that name already exists.'
+          : `Operation failed (${err.status}).`
+        : 'Operation failed.';
+      setActionError(message);
     }
-    setNaming(null);
-    refreshTree();
   }
 
   async function doDelete() {
+    setActionError(null);
     if (!path) return;
-    await api.remove(path);
-    editor.clear();
-    setConfirmingDelete(false);
-    refreshTree();
+    try {
+      await api.remove(path);
+      editor.clear();
+      setConfirmingDelete(false);
+      refreshTree();
+    } catch (err) {
+      const message = err instanceof ApiError
+        ? `Operation failed (${err.status}).`
+        : 'Operation failed.';
+      setActionError(message);
+      setConfirmingDelete(false);
+    }
   }
 
   return (
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <button onClick={() => setNaming({ mode: 'create' })}>+ New</button>
+          <button onClick={() => { setActionError(null); setNaming({ mode: 'create' }); }}>+ New</button>
         </div>
         {naming && (
           <NameInput
@@ -64,7 +84,7 @@ export function App() {
           <span className="title" data-testid="note-title">{path ? title : 'noteviewer'}</span>
           {path && (
             <>
-              <button onClick={() => setNaming({ mode: 'rename', from: path })}>Rename</button>
+              <button onClick={() => { setActionError(null); setNaming({ mode: 'rename', from: path }); }}>Rename</button>
               {confirmingDelete ? (
                 <button className="danger" onClick={() => void doDelete()}>Really delete?</button>
               ) : (
@@ -76,6 +96,7 @@ export function App() {
             {saving ? 'Saving…' : dirty ? 'Edited' : path ? 'Saved' : ''}
           </span>
         </header>
+        {actionError && <div className="offline-banner" role="alert" data-testid="action-error">{actionError}</div>}
         {path ? (
           <EditorPane
             key={`${path}#${revision}`}
