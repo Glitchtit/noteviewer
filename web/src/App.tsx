@@ -1,12 +1,117 @@
+import { useCallback, useEffect, useState } from 'react';
+import type { TreeNode } from '@noteviewer/shared';
+import { api } from './api';
+import { EditorPane } from './components/EditorPane';
+import { FileTree } from './components/FileTree';
+import { useNoteEditor } from './hooks/useNoteEditor';
+
+type Naming = { mode: 'create' } | { mode: 'rename'; from: string } | null;
+
 export function App() {
+  const [tree, setTree] = useState<TreeNode | null>(null);
+  const [naming, setNaming] = useState<Naming>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const editor = useNoteEditor();
+  const { path, title, content, revision, dirty, saving } = editor.state;
+
+  const refreshTree = useCallback(() => {
+    api.tree().then(setTree).catch(() => {});
+  }, []);
+
+  useEffect(() => refreshTree(), [refreshTree]);
+  useEffect(() => setConfirmingDelete(false), [path]);
+
+  const ensureMd = (name: string) => (name.endsWith('.md') ? name : `${name}.md`);
+
+  async function submitName(value: string) {
+    const target = ensureMd(value);
+    if (naming?.mode === 'create') {
+      const res = await api.create(target);
+      await editor.open(res.path);
+    } else if (naming?.mode === 'rename') {
+      await api.rename(naming.from, target);
+      await editor.open(target);
+    }
+    setNaming(null);
+    refreshTree();
+  }
+
+  async function doDelete() {
+    if (!path) return;
+    await api.remove(path);
+    editor.clear();
+    setConfirmingDelete(false);
+    refreshTree();
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="sidebar-header">noteviewer</div>
+        <div className="sidebar-header">
+          <button onClick={() => setNaming({ mode: 'create' })}>+ New</button>
+        </div>
+        {naming && (
+          <NameInput
+            initial={naming.mode === 'rename' ? naming.from : ''}
+            onSubmit={(v) => void submitName(v)}
+            onCancel={() => setNaming(null)}
+          />
+        )}
+        {tree && <FileTree root={tree} selected={path} onOpenNote={(p) => void editor.open(p)} />}
       </aside>
       <main className="main">
-        <div className="empty">Select a note</div>
+        <header className="topbar">
+          <span className="title" data-testid="note-title">{path ? title : 'noteviewer'}</span>
+          {path && (
+            <>
+              <button onClick={() => setNaming({ mode: 'rename', from: path })}>Rename</button>
+              {confirmingDelete ? (
+                <button className="danger" onClick={() => void doDelete()}>Really delete?</button>
+              ) : (
+                <button onClick={() => setConfirmingDelete(true)}>Delete</button>
+              )}
+            </>
+          )}
+          <span className={`save-state${dirty ? ' dirty' : ''}`} data-testid="save-state">
+            {saving ? 'Saving…' : dirty ? 'Edited' : path ? 'Saved' : ''}
+          </span>
+        </header>
+        {path ? (
+          <EditorPane
+            key={`${path}#${revision}`}
+            initialContent={content}
+            onChange={editor.handleChange}
+            onSave={() => void editor.saveNow()}
+          />
+        ) : (
+          <div className="empty">Select a note</div>
+        )}
       </main>
     </div>
+  );
+}
+
+function NameInput({
+  initial, onSubmit, onCancel,
+}: {
+  initial: string; onSubmit(v: string): void; onCancel(): void;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <form
+      className="name-input"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (value.trim()) onSubmit(value.trim());
+      }}
+    >
+      <input
+        autoFocus
+        value={value}
+        placeholder="path/note.md"
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+      />
+    </form>
   );
 }
