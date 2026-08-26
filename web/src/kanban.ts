@@ -44,6 +44,23 @@ export function parseKanban(content: string): KanbanDoc {
   return { frontmatter, columns, trailer };
 }
 
+export function moveCardIn(
+  doc: KanbanDoc,
+  from: { col: number; item: number },
+  to: { col: number; item: number },
+): KanbanDoc {
+  const next: KanbanDoc = { ...doc, columns: doc.columns.map((c) => ({ ...c, items: [...c.items] })) };
+  const [card] = next.columns[from.col]!.items.splice(from.item, 1);
+  const targetItems = next.columns[to.col]!.items;
+  // Removing the card from its source column shifts every later index in
+  // that same column down by one, so a same-column downward drop must
+  // target one slot earlier than the pre-removal drop index.
+  const rawInsertAt = from.col === to.col && from.item < to.item ? to.item - 1 : to.item;
+  const insertAt = Math.max(0, Math.min(rawInsertAt, targetItems.length));
+  targetItems.splice(insertAt, 0, card!);
+  return next;
+}
+
 export function serializeKanban(doc: KanbanDoc): string {
   const cols = doc.columns.map((c) => {
     const items = c.items.map((i) => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n');

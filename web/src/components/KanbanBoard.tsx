@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type KanbanDoc, parseKanban, serializeKanban } from '../kanban';
+import { type KanbanDoc, moveCardIn, parseKanban, serializeKanban } from '../kanban';
 
 export interface KanbanBoardProps {
   content: string;
@@ -20,9 +20,7 @@ export function KanbanBoard({ content, onChange }: KanbanBoardProps) {
 
   function moveCard(toCol: number, toIndex: number) {
     if (!drag) return;
-    const next = cloneDoc();
-    const [card] = next.columns[drag.col]!.items.splice(drag.item, 1);
-    next.columns[toCol]!.items.splice(toIndex, 0, card!);
+    const next = moveCardIn(doc, drag, { col: toCol, item: toIndex });
     setDrag(null);
     commit(next);
   }
