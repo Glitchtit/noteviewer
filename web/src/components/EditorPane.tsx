@@ -4,6 +4,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
+import { inlineWidgets } from '../cm/inlineWidgets';
 import { livePreview } from '../cm/livePreview';
 import { cmTheme } from '../cm/theme';
 import { wikilinkExtensions } from '../cm/wikilinkPlugin';
@@ -19,10 +20,11 @@ export interface EditorPaneProps {
   onSave(): void;
   onOpenLink?(target: string): void;
   noteNames?: string[];
+  resolveFile?(target: string): string | undefined;
 }
 
 export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function EditorPane(
-  { initialContent, onChange, onSave, onOpenLink, noteNames },
+  { initialContent, onChange, onSave, onOpenLink, noteNames, resolveFile },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,6 +37,8 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
   onOpenLinkRef.current = onOpenLink;
   const noteNamesRef = useRef(noteNames);
   noteNamesRef.current = noteNames;
+  const resolveFileRef = useRef(resolveFile);
+  resolveFileRef.current = resolveFile;
 
   useImperativeHandle(ref, () => ({
     get view() {
@@ -57,6 +61,7 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
       }),
       cmTheme,
       livePreview,
+      inlineWidgets({ resolveFile: (t) => resolveFileRef.current?.(t) }),
     ];
     if (onOpenLinkRef.current) {
       extensions.push(

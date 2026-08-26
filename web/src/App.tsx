@@ -180,6 +180,7 @@ export function App() {
               onSave={() => void editor.saveNow()}
               onOpenLink={(t) => { const r = tree && resolveLink(tree, t); if (r) void editor.open(r); }}
               noteNames={noteNames}
+              resolveFile={(t) => (tree ? resolveLink(tree, t) : undefined)}
             />
           )
         ) : (

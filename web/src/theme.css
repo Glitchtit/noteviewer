@@ -114,3 +114,7 @@ button.danger { color: var(--danger); }
 .cm-wikilink { color: var(--accent); cursor: pointer; }
 .cm-wikilink:hover { text-decoration: underline; }
 .cm-tag { color: var(--accent); background: var(--bg-hover); border-radius: 8px; padding: 0 6px; }
+
+/* Task 3-5: inline widgets */
+.cm-checkbox { accent-color: var(--accent); margin-right: 4px; }
+.cm-image { max-width: min(100%, 480px); display: block; margin: 4px 0; border-radius: 4px; }
