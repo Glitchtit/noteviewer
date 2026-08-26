@@ -53,6 +53,13 @@ describe('useNoteEditor', () => {
     expect(result.current.state.backlinks).toEqual(['ref.md']);
   });
 
+  it('getBuffer reflects live keystrokes while state.content stays the loaded snapshot', async () => {
+    const { result } = await openNote('h1', 'body');
+    act(() => result.current.handleChange('fresh text'));
+    expect(result.current.getBuffer()).toBe('fresh text');
+    expect(result.current.state.content).toBe('body');
+  });
+
   it('autosaves 1000ms after the last change with the base hash', async () => {
     const { result } = await openNote();
     mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'h2' });

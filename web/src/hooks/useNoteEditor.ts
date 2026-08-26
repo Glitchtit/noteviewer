@@ -182,5 +182,12 @@ export function useNoteEditor() {
     setState(EMPTY);
   }, [clearTimer]);
 
-  return { state, open, handleChange, saveNow: save, external, keepTheirs, keepMine, saveAsCopy, clear };
+  // Live edit buffer, always current — unlike state.content, which is only
+  // written by open/external/keepTheirs/saveAsCopy and does not reflect
+  // in-progress keystrokes or a completed save().
+  const getBuffer = useCallback(() => bufferRef.current, []);
+
+  return {
+    state, open, handleChange, saveNow: save, external, keepTheirs, keepMine, saveAsCopy, clear, getBuffer,
+  };
 }

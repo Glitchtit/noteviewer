@@ -22,6 +22,12 @@ vi.mock('../src/components/EditorPane', () => ({
   ),
 }));
 
+vi.mock('../src/components/ReadingView', () => ({
+  ReadingView: ({ content }: { content: string }) => (
+    <div data-testid="mock-reading-view">{content}</div>
+  ),
+}));
+
 const mocked = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const tree = {
@@ -110,6 +116,20 @@ describe('App', () => {
     expect(mocked.save!.mock.invocationCallOrder[0]).toBeLessThan(
       mocked.rename!.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('reading mode shows the live edit buffer, not the stale loaded snapshot', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'original'));
+    mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'h2' });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+
+    fireEvent.click(screen.getByTestId('mock-editor-change'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle reading mode' }));
+
+    await waitFor(() => expect(screen.getByTestId('mock-reading-view').textContent).toBe('edited'));
   });
 
   it('shows error when create fails with 409', async () => {

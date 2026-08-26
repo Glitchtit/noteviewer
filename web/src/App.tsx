@@ -49,9 +49,11 @@ export function App() {
   useEffect(() => refreshTree(), [refreshTree]);
   useEffect(() => setConfirmingDelete(false), [path]);
 
-  // Ctrl/Cmd+E toggles reading mode globally. Flush any dirty buffer first
-  // since editor.state.content only reflects the last-applied save, not
-  // unsaved keystrokes — saveNow() closes that gap before ReadingView reads it.
+  // Ctrl/Cmd+E toggles reading mode globally. state.content is only the
+  // last-applied snapshot (set by open/external/keepTheirs/saveAsCopy) — it
+  // does not reflect in-progress keystrokes, so ReadingView is fed from the
+  // live edit buffer via editor.getBuffer() instead. saveNow() here is for
+  // persistence (so the edit isn't lost), not for freshening what's read.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'e') {
@@ -158,7 +160,7 @@ export function App() {
         )}
         {path ? (
           viewMode === 'read' ? (
-            <ReadingView content={content} tree={tree} onOpenNote={(p) => void editor.open(p)} />
+            <ReadingView content={editor.getBuffer()} tree={tree} onOpenNote={(p) => void editor.open(p)} />
           ) : (
             <EditorPane
               key={`${path}#${revision}`}
