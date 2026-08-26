@@ -29,6 +29,7 @@ export function SearchOverlay({ mode, notePaths, onOpen, onClose }: SearchOverla
   const [selected, setSelected] = useState(0);
   const [remote, setRemote] = useState<SearchResult[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reqSeq = useRef(0);
 
   const results = useMemo<{ path: string; label: string; sub?: string }[]>(() => {
     if (mode === 'switcher') {
@@ -47,11 +48,15 @@ export function SearchOverlay({ mode, notePaths, onOpen, onClose }: SearchOverla
     if (mode !== 'search') return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
+      reqSeq.current += 1;
       setRemote([]);
       return;
     }
     debounceRef.current = setTimeout(() => {
-      void api.search(query).then(setRemote).catch(() => {});
+      const seq = ++reqSeq.current;
+      void api.search(query).then((r) => {
+        if (seq === reqSeq.current) setRemote(r);
+      }).catch(() => {});
     }, 250);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);

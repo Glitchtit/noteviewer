@@ -41,4 +41,38 @@ describe('SearchOverlay search', () => {
     vi.useRealTimers();
     await waitFor(() => expect(screen.getByText('Inbox')).toBeTruthy());
   });
+
+  it('ignores a stale response that resolves after a newer query', async () => {
+    vi.useFakeTimers();
+    let resolveA!: (v: { path: string; title: string; score: number }[]) => void;
+    let resolveAb!: (v: { path: string; title: string; score: number }[]) => void;
+    const pendingA = new Promise<{ path: string; title: string; score: number }[]>((res) => {
+      resolveA = res;
+    });
+    const pendingAb = new Promise<{ path: string; title: string; score: number }[]>((res) => {
+      resolveAb = res;
+    });
+    vi.mocked(api.search).mockImplementationOnce(() => pendingA).mockImplementationOnce(() => pendingAb);
+
+    render(<SearchOverlay mode="search" notePaths={[]} onOpen={() => {}} onClose={() => {}} />);
+    const input = screen.getByRole('textbox');
+
+    fireEvent.change(input, { target: { value: 'a' } });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(api.search).toHaveBeenNthCalledWith(1, 'a');
+
+    fireEvent.change(input, { target: { value: 'ab' } });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(api.search).toHaveBeenNthCalledWith(2, 'ab');
+
+    // Newer request ("ab") resolves first, then the stale "a" request resolves late.
+    resolveAb([{ path: 'AB.md', title: 'AB', score: 1 }]);
+    await pendingAb;
+    resolveA([{ path: 'A.md', title: 'A', score: 1 }]);
+    await pendingA;
+
+    vi.useRealTimers();
+    await waitFor(() => expect(screen.getByText('AB')).toBeTruthy());
+    expect(screen.queryByText('A')).toBeNull();
+  });
 });
