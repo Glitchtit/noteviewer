@@ -159,12 +159,23 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
         const newName = path.posix.basename(to, '.md');
         const rewritten: string[] = [];
         for (const ref of referrers) {
-          const file = await readNote(app.vaultRoot, ref);
+          let file = await readNote(app.vaultRoot, ref);
           const updated = rewriteLinks(file.content, oldName, newName);
           if (updated !== file.content) {
-            await writeNoteAtomic(app.vaultRoot, ref, updated, file.hash);
-            await app.index.updateNote(ref);
-            rewritten.push(ref);
+            let result = await writeNoteAtomic(app.vaultRoot, ref, updated, file.hash);
+            if (result.conflict) {
+              // Retry: re-read and attempt write with fresh hash
+              file = await readNote(app.vaultRoot, ref);
+              const retryUpdated = rewriteLinks(file.content, oldName, newName);
+              if (retryUpdated !== file.content) {
+                result = await writeNoteAtomic(app.vaultRoot, ref, retryUpdated, file.hash);
+              }
+            }
+            // Only include in rewritten if write succeeded (no conflict)
+            if (!result.conflict) {
+              await app.index.updateNote(ref);
+              rewritten.push(ref);
+            }
           }
         }
         app.index.removeNote(from);

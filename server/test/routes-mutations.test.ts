@@ -79,6 +79,32 @@ describe('POST /api/rename', () => {
     expect(await readFile(path.join(root, 'unrelated.md'), 'utf8')).toBe('[[Older]] stays');
   });
 
+  it('rewritten list matches actual disk state (honest reporting)', async () => {
+    const { app, root } = await appFor({
+      'Old.md': '# Old',
+      'ref1.md': 'sees [[Old]]',
+      'ref2.md': 'no link here',
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/rename',
+      payload: { from: 'Old.md', to: 'New.md' },
+    });
+    expect(res.statusCode).toBe(200);
+    const rewritten = res.json().rewritten;
+
+    // rewritten should only contain ref1.md (which had the link)
+    expect(rewritten).toEqual(['ref1.md']);
+
+    // Verify disk state matches response:
+    // ref1.md should have New instead of Old
+    expect(await readFile(path.join(root, 'ref1.md'), 'utf8')).toBe('sees [[New]]');
+    // ref2.md should be unchanged (not in rewritten)
+    expect(await readFile(path.join(root, 'ref2.md'), 'utf8')).toBe('no link here');
+    // Old.md should be moved
+    expect(await readFile(path.join(root, 'New.md'), 'utf8')).toBe('# Old');
+  });
+
   it('409s when the target exists', async () => {
     const { app } = await appFor({ 'a.md': '', 'b.md': '' });
     const res = await app.inject({
