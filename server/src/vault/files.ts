@@ -45,8 +45,13 @@ export async function writeNoteAtomic(
   }
   await fs.mkdir(path.dirname(abs), { recursive: true });
   const tmp = path.join(path.dirname(abs), `.tmp-${randomBytes(6).toString('hex')}`);
-  await fs.writeFile(tmp, content, 'utf8');
-  await fs.rename(tmp, abs);
+  try {
+    await fs.writeFile(tmp, content, 'utf8');
+    await fs.rename(tmp, abs);
+  } catch (error) {
+    await fs.unlink(tmp).catch(() => {});
+    throw error;
+  }
   const stat = await fs.stat(abs);
   return { conflict: false, mtimeMs: stat.mtimeMs, hash: hashContent(content) };
 }

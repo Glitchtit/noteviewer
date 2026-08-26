@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -51,5 +51,19 @@ describe('files', () => {
     expect(isHiddenName('.obsidian')).toBe(true);
     expect(isHiddenName('node_modules')).toBe(true);
     expect(isHiddenName('Notes')).toBe(false);
+  });
+
+  it('cleans up temp file on write failure', async () => {
+    const root = await makeVault({});
+    // Create a directory where we'll try to write a file (rename will fail)
+    await mkdir(path.join(root, 'a.md'), { recursive: true });
+
+    // Attempt to write to a path that's a directory (rename will fail)
+    await expect(writeNoteAtomic(root, 'a.md', 'content')).rejects.toThrow();
+
+    // Verify no temp files were left behind
+    const files = await readdir(root);
+    const tmpFiles = files.filter((f) => f.startsWith('.tmp-'));
+    expect(tmpFiles).toHaveLength(0);
   });
 });
