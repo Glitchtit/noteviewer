@@ -5,6 +5,7 @@ import { ConflictBar } from './components/ConflictBar';
 import { EditorPane } from './components/EditorPane';
 import { FileTree } from './components/FileTree';
 import { useNoteEditor } from './hooks/useNoteEditor';
+import { useVaultEvents } from './hooks/useVaultEvents';
 
 type Naming = { mode: 'create' } | { mode: 'rename'; from: string } | null;
 
@@ -19,6 +20,11 @@ export function App() {
   const refreshTree = useCallback(() => {
     api.tree().then(setTree).catch(() => {});
   }, []);
+
+  useVaultEvents({
+    onTreeChanged: refreshTree,
+    onNoteChanged: (p) => void editor.external(p),
+  });
 
   useEffect(() => refreshTree(), [refreshTree]);
   useEffect(() => setConfirmingDelete(false), [path]);
