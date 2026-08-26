@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
 import { api } from '../src/api';
@@ -27,13 +27,17 @@ beforeEach(() => {
 
 describe('offline banner', () => {
   it('appears on network error and clears when a retry ping succeeds', async () => {
-    vi.useFakeTimers();
     const mod = (await import('../src/api')) as unknown as { fireNetworkError(): void };
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
+    vi.useFakeTimers();
     act(() => mod.fireNetworkError());
-    expect(await screen.findByText(/Vault unreachable/)).toBeTruthy();
-    await act(() => vi.advanceTimersByTimeAsync(10_000));
-    await waitFor(() => expect(screen.queryByText(/Vault unreachable/)).toBeNull());
+    expect(screen.getByText(/Vault unreachable/)).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.queryByText(/Vault unreachable/)).toBeNull();
     vi.useRealTimers();
   });
 });
