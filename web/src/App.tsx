@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TreeNode } from '@noteviewer/shared';
-import { api, ApiError } from './api';
+import { api, ApiError, onNetworkError } from './api';
 import { ConflictBar } from './components/ConflictBar';
 import { EditorPane } from './components/EditorPane';
 import { FileTree } from './components/FileTree';
@@ -14,12 +14,30 @@ export function App() {
   const [naming, setNaming] = useState<Naming>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const editor = useNoteEditor();
   const { path, title, content, revision, dirty, saving, conflict } = editor.state;
 
   const refreshTree = useCallback(() => {
     api.tree().then(setTree).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    onNetworkError(() => setOffline(true));
+    return () => onNetworkError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!offline) return;
+    const id = setInterval(() => {
+      api.tree().then((t) => {
+        setTree(t);
+        setOffline(false);
+      }).catch(() => {});
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [offline]);
 
   useVaultEvents({
     onTreeChanged: refreshTree,
@@ -72,7 +90,7 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app${sidebarOpen ? ' sidebar-open' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-header">
           <button onClick={() => { setActionError(null); setNaming({ mode: 'create' }); }}>+ New</button>
@@ -88,6 +106,7 @@ export function App() {
       </aside>
       <main className="main">
         <header className="topbar">
+          <button className="hamburger" aria-label="Toggle sidebar" onClick={() => setSidebarOpen((o) => !o)}>☰</button>
           <span className="title" data-testid="note-title">{path ? title : 'noteviewer'}</span>
           {path && (
             <>
@@ -103,6 +122,7 @@ export function App() {
             {saving ? 'Saving…' : dirty ? 'Edited' : path ? 'Saved' : ''}
           </span>
         </header>
+        {offline && <div className="offline-banner">Vault unreachable — retrying…</div>}
         {actionError && <div className="offline-banner" role="alert" data-testid="action-error">{actionError}</div>}
         {conflict && (
           <ConflictBar
