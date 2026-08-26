@@ -18,6 +18,10 @@ function relParam(params: unknown): string {
   return decodeURIComponent((params as Record<string, string>)['*'] ?? '');
 }
 
+function badNotePath(rel: string): boolean {
+  return rel.split('/').some(isHiddenName) || !rel.endsWith('.md');
+}
+
 export async function vaultRoutes(app: FastifyInstance): Promise<void> {
   await app.register(fastifyStatic, { root: app.vaultRoot, serve: false });
 
@@ -25,6 +29,7 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/note/*', async (req, reply) => {
     const rel = relParam(req.params);
+    if (badNotePath(rel)) return reply.code(404).send({ error: 'note not found' });
     try {
       const file = await readNote(app.vaultRoot, rel);
       await app.index.updateNote(rel);
@@ -56,6 +61,7 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       const rel = relParam(req.params);
+      if (badNotePath(rel)) return reply.code(404).send({ error: 'bad path' });
       try {
         const result = await writeNoteAtomic(
           app.vaultRoot,
@@ -91,6 +97,7 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       let rel = req.body.path;
+      if (badNotePath(rel)) return reply.code(400).send({ error: 'bad path' });
       try {
         let exists = true;
         try {
@@ -117,6 +124,7 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/api/note/*', async (req, reply) => {
     const rel = relParam(req.params);
+    if (badNotePath(rel)) return reply.code(404).send({ error: 'note not found' });
     try {
       const trashedTo = await trashNote(app.vaultRoot, rel);
       app.index.removeNote(rel);
@@ -143,6 +151,7 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       const { from, to } = req.body;
+      if (badNotePath(from) || badNotePath(to)) return reply.code(400).send({ error: 'bad path' });
       try {
         const fromAbs = resolveVaultPath(app.vaultRoot, from);
         const toAbs = resolveVaultPath(app.vaultRoot, to);
@@ -157,16 +166,25 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
         await fs.rename(fromAbs, toAbs);
         const oldName = path.posix.basename(from, '.md');
         const newName = path.posix.basename(to, '.md');
+        const fromPathNoExt = from.slice(0, -'.md'.length);
+        const toPathNoExt = to.slice(0, -'.md'.length);
+        const applyRewrites = (content: string): string => {
+          let updated = rewriteLinks(content, oldName, newName);
+          if (fromPathNoExt !== oldName) {
+            updated = rewriteLinks(updated, fromPathNoExt, toPathNoExt);
+          }
+          return updated;
+        };
         const rewritten: string[] = [];
         for (const ref of referrers) {
           let file = await readNote(app.vaultRoot, ref);
-          const updated = rewriteLinks(file.content, oldName, newName);
+          const updated = applyRewrites(file.content);
           if (updated !== file.content) {
             let result = await writeNoteAtomic(app.vaultRoot, ref, updated, file.hash);
             if (result.conflict) {
               // Retry: re-read and attempt write with fresh hash
               file = await readNote(app.vaultRoot, ref);
-              const retryUpdated = rewriteLinks(file.content, oldName, newName);
+              const retryUpdated = applyRewrites(file.content);
               if (retryUpdated !== file.content) {
                 result = await writeNoteAtomic(app.vaultRoot, ref, retryUpdated, file.hash);
               }

@@ -45,6 +45,16 @@ describe('POST /api/note', () => {
     expect(await readFile(path.join(root, 'n-copy.md'), 'utf8')).toBe('mine');
     expect(await readFile(path.join(root, 'n.md'), 'utf8')).toBe('original');
   });
+
+  it('400s creating a note under a hidden directory', async () => {
+    const { app } = await appFor({});
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/note',
+      payload: { path: '.trash/y.md', content: 'x' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 describe('DELETE /api/note/*', () => {
@@ -55,6 +65,12 @@ describe('DELETE /api/note/*', () => {
     expect(res.json().trashedTo).toBe('.trash/a.md');
     expect(await readFile(path.join(root, '.trash/a.md'), 'utf8')).toBe('bye');
     expect((await app.inject({ url: '/api/note/a.md' })).statusCode).toBe(404);
+  });
+
+  it('404s deleting a hidden-directory path', async () => {
+    const { app } = await appFor({ '.trash/x.md': 'already trashed' });
+    const res = await app.inject({ method: 'DELETE', url: '/api/note/.trash/x.md' });
+    expect(res.statusCode).toBe(404);
   });
 });
 
@@ -113,6 +129,32 @@ describe('POST /api/rename', () => {
       payload: { from: 'a.md', to: 'b.md' },
     });
     expect(res.statusCode).toBe(409);
+  });
+
+  it('400s renaming to or from a hidden-directory path', async () => {
+    const { app } = await appFor({ 'a.md': '' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/rename',
+      payload: { from: 'a.md', to: '.trash/a.md' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rewrites path-qualified wikilinks on rename', async () => {
+    const { app, root } = await appFor({
+      'sub/Old.md': '# Old',
+      'ref.md': 'see [[sub/Old]] and [[sub/Old|alias]]',
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/rename',
+      payload: { from: 'sub/Old.md', to: 'sub2/New.md' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(await readFile(path.join(root, 'ref.md'), 'utf8')).toBe(
+      'see [[sub2/New]] and [[sub2/New|alias]]',
+    );
   });
 });
 

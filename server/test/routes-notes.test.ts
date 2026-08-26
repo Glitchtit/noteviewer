@@ -41,6 +41,19 @@ describe('GET /api/note/*', () => {
     expect((await app.inject({ url: '/api/note/nope.md' })).statusCode).toBe(404);
     expect((await app.inject({ url: '/api/note/..%2Fescape.md' })).statusCode).toBe(404);
   });
+
+  it('404s on hidden-segment paths and does not pollute the search index', async () => {
+    const { app } = await appFor({ '.trash/x.md': 'secret quantumflux content' });
+    const res = await app.inject({ url: '/api/note/.trash/x.md' });
+    expect(res.statusCode).toBe(404);
+    const search = await app.inject({ url: '/api/search?q=quantumflux' });
+    expect(search.json()).toEqual([]);
+  });
+
+  it('404s on non-markdown paths', async () => {
+    const { app } = await appFor({ 'img.png': 'binary' });
+    expect((await app.inject({ url: '/api/note/img.png' })).statusCode).toBe(404);
+  });
 });
 
 describe('PUT /api/note/*', () => {
@@ -77,5 +90,15 @@ describe('PUT /api/note/*', () => {
     });
     const res = await app.inject({ url: '/api/note/a.md' });
     expect(res.json().meta.title).toBe('Fresh');
+  });
+
+  it('404s writes into hidden directories', async () => {
+    const { app } = await appFor({});
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/note/.obsidian/app.json',
+      payload: { content: '{}' },
+    });
+    expect(res.statusCode).toBe(404);
   });
 });

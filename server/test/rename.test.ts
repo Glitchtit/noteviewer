@@ -17,4 +17,8 @@ describe('rewriteLinks', () => {
   it('escapes regex metacharacters in names', () => {
     expect(rewriteLinks('link [[C++ (notes)]]', 'C++ (notes)', 'Cpp')).toBe('link [[Cpp]]');
   });
+
+  it('rewrites block-reference links', () => {
+    expect(rewriteLinks('see [[Old^abc123]]', 'Old', 'New')).toBe('see [[New^abc123]]');
+  });
 });
