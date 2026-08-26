@@ -58,4 +58,10 @@ describe('createChangeHandler', () => {
     bus.emitEvent({ type: 'tree-changed' });
     expect(seen).toHaveLength(1);
   });
+
+  it('rejects when file is missing (startWatcher catches this)', async () => {
+    const s = await setup({ 'a.md': '# Test' });
+    // Try to handle a non-existent file — handler should reject
+    await expect(s.handler('change', path.join(s.root, 'missing.md'))).rejects.toThrow();
+  });
 });

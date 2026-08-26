@@ -43,6 +43,11 @@ export function startWatcher(
       path.relative(root, p).split(path.sep).some((part) => part && isHiddenName(part)),
   });
   const kinds: ChangeKind[] = ['add', 'change', 'unlink', 'addDir', 'unlinkDir'];
-  for (const kind of kinds) watcher.on(kind, (p: string) => void handler(kind, p));
+  for (const kind of kinds)
+    watcher.on(kind, (p: string) => {
+      handler(kind, p).catch((err) => {
+        console.error(`watcher: failed handling ${kind} ${p}:`, err);
+      });
+    });
   return watcher;
 }
