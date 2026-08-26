@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { TreeNode } from '@noteviewer/shared';
 import { resolveVaultPath } from './paths.js';
 
 export function isHiddenName(name: string): boolean {
@@ -69,4 +70,56 @@ export async function uniqueCopyPath(root: string, rel: string): Promise<string>
       return candidate;
     }
   }
+}
+
+export async function buildTree(root: string): Promise<TreeNode> {
+  const rootAbs = resolveVaultPath(root, '');
+  async function walk(absDir: string, relDir: string): Promise<TreeNode[]> {
+    const entries = await fs.readdir(absDir, { withFileTypes: true });
+    const nodes: TreeNode[] = [];
+    for (const e of entries) {
+      if (isHiddenName(e.name)) continue;
+      const rel = relDir ? `${relDir}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        nodes.push({
+          name: e.name,
+          path: rel,
+          type: 'folder',
+          children: await walk(path.join(absDir, e.name), rel),
+        });
+      } else if (e.isFile()) {
+        nodes.push({
+          name: e.name,
+          path: rel,
+          type: e.name.endsWith('.md') ? 'note' : 'file',
+        });
+      }
+    }
+    nodes.sort(
+      (a, b) =>
+        (a.type === 'folder' ? 0 : 1) - (b.type === 'folder' ? 0 : 1) ||
+        a.name.localeCompare(b.name),
+    );
+    return nodes;
+  }
+  return { name: '', path: '', type: 'folder', children: await walk(rootAbs, '') };
+}
+
+export async function trashNote(root: string, rel: string): Promise<string> {
+  const abs = resolveVaultPath(root, rel);
+  const trashDir = path.join(resolveVaultPath(root, ''), '.trash');
+  await fs.mkdir(trashDir, { recursive: true });
+  const ext = path.posix.extname(rel);
+  const base = path.posix.basename(rel, ext);
+  let target = `.trash/${base}${ext}`;
+  for (let i = 2; ; i++) {
+    try {
+      await fs.access(path.join(resolveVaultPath(root, ''), target));
+      target = `.trash/${base}-${i}${ext}`;
+    } catch {
+      break;
+    }
+  }
+  await fs.rename(abs, path.join(resolveVaultPath(root, ''), target));
+  return target;
 }
