@@ -15,10 +15,13 @@ vi.mock('../src/api', async () => {
 });
 
 vi.mock('../src/components/EditorPane', () => ({
-  EditorPane: ({ onChange }: { onChange(text: string): void }) => (
-    <button data-testid="mock-editor-change" onClick={() => onChange('edited')}>
-      mock editor
-    </button>
+  EditorPane: ({ onChange, initialContent }: { onChange(text: string): void; initialContent: string }) => (
+    <div>
+      <div data-testid="mock-editor-initial">{initialContent}</div>
+      <button data-testid="mock-editor-change" onClick={() => onChange('edited')}>
+        mock editor
+      </button>
+    </div>
   ),
 }));
 
@@ -158,6 +161,22 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Toggle reading mode' }));
 
     await waitFor(() => expect(screen.getByTestId('mock-reading-view').textContent).toBe('edited'));
+  });
+
+  it('editor remounts with the live buffer, not the stale loaded snapshot, after toggling reading mode', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'original'));
+    mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'h2' });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+
+    fireEvent.click(screen.getByTestId('mock-editor-change'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle reading mode' }));
+    await waitFor(() => expect(screen.getByTestId('mock-reading-view')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle reading mode' }));
+
+    await waitFor(() => expect(screen.getByTestId('mock-editor-initial').textContent).toBe('edited'));
   });
 
   it('shows error when create fails with 409', async () => {

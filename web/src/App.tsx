@@ -28,8 +28,8 @@ export function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const editorRef = useRef<EditorPaneHandle>(null);
   const editor = useNoteEditor();
-  const { path, title, content, revision, dirty, saving, conflict } = editor.state;
-  const kanban = isKanbanNote(content);
+  const { path, title, revision, dirty, saving, conflict } = editor.state;
+  const kanban = isKanbanNote(editor.getBuffer());
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
 
@@ -236,14 +236,14 @@ export function App() {
         )}
         {path ? (
           kanban && boardMode ? (
-            <KanbanBoard content={content} onChange={(md) => editor.applyLocalContent(md)} />
+            <KanbanBoard content={editor.getBuffer()} onChange={(md) => editor.applyLocalContent(md)} />
           ) : viewMode === 'read' ? (
             <ReadingView content={editor.getBuffer()} tree={tree} onOpenNote={(p) => void openNote(p)} />
           ) : (
             <EditorPane
               ref={editorRef}
               key={`${path}#${revision}`}
-              initialContent={content}
+              initialContent={editor.getBuffer()}
               onChange={editor.handleChange}
               onSave={() => void editor.saveNow()}
               onOpenLink={(t) => { const r = tree && resolveLink(tree, t); if (r) void openNote(r); }}
