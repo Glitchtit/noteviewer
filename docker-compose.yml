@@ -1,0 +1,7 @@
+services:
+  noteviewer:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - "${VAULT_PATH:?set VAULT_PATH to your vault folder}:/vault"
