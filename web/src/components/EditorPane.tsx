@@ -1,8 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { languages } from '@codemirror/language-data';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
+import { livePreview } from '../cm/livePreview';
 import { cmTheme } from '../cm/theme';
 
 export interface EditorPaneHandle {
@@ -44,12 +46,13 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
             ...defaultKeymap,
             ...historyKeymap,
           ]),
-          markdown({ base: markdownLanguage }),
+          markdown({ base: markdownLanguage, codeLanguages: languages }),
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current(u.state.doc.toString());
           }),
           cmTheme,
+          livePreview,
         ],
       }),
       parent: containerRef.current!,
