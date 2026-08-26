@@ -164,4 +164,82 @@ describe('useNoteEditor', () => {
     expect(mocked.save).toHaveBeenCalledWith('a.md', 'unsaved', 'h1');
     expect(result.current.state.path).toBe('b.md');
   });
+
+  it('saveNow is not re-entrant while a save is already in flight', async () => {
+    const { result } = await openNote();
+    let resolveSave!: (value: { mtimeMs: number; hash: string }) => void;
+    mocked.save!.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    act(() => result.current.handleChange('mine'));
+
+    let p1!: Promise<void>;
+    let p2!: Promise<void>;
+    act(() => {
+      p1 = result.current.saveNow();
+    });
+    act(() => {
+      p2 = result.current.saveNow();
+    });
+    // the second overlapping saveNow() must no-op: only one PUT in flight
+    expect(mocked.save).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSave({ mtimeMs: 2, hash: 'h2' });
+      await p1;
+      await p2;
+    });
+    expect(result.current.state.dirty).toBe(false);
+  });
+
+  it('keepMine does not corrupt a different note opened while its save is in flight', async () => {
+    const { result } = await openNote(); // a.md, base hash h1
+    act(() => result.current.handleChange('mine'));
+    mocked.note!.mockResolvedValue(noteResponse('theirs', 'h9'));
+    await act(() => result.current.external('a.md'));
+    expect(result.current.state.conflict?.content).toBe('theirs');
+
+    let resolveSave!: (value: { mtimeMs: number; hash: string }) => void;
+    mocked.save!.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+
+    let keepMinePromise!: Promise<void>;
+    act(() => {
+      keepMinePromise = result.current.keepMine();
+    });
+    expect(mocked.save).toHaveBeenCalledWith('a.md', 'mine', 'h9');
+
+    // navigate away to b.md before the keepMine save resolves
+    mocked.note!.mockResolvedValue({
+      content: 'other', backlinks: [],
+      meta: { path: 'b.md', title: 'B', tags: [], links: [], headings: [], mtimeMs: 1, hash: 'hb' },
+    });
+    await act(() => result.current.open('b.md'));
+    expect(result.current.state.path).toBe('b.md');
+
+    // now the stale a.md save resolves — it must not touch b.md's state
+    await act(async () => {
+      resolveSave({ mtimeMs: 5, hash: 'h10' });
+      await keepMinePromise;
+    });
+    expect(result.current.state.path).toBe('b.md');
+    expect(result.current.state.dirty).toBe(false);
+    expect(result.current.state.conflict).toBeNull();
+
+    // and it must not have clobbered b.md's base hash: a fresh autosave on
+    // b.md should PUT with b.md's own base hash ('hb'), not the stale
+    // conflict-resolution response ('h10')
+    mocked.save!.mockClear();
+    mocked.save!.mockResolvedValue({ mtimeMs: 6, hash: 'h11' });
+    act(() => result.current.handleChange('bbb'));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(mocked.save).toHaveBeenCalledWith('b.md', 'bbb', 'hb');
+  });
 });

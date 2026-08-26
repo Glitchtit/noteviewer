@@ -47,8 +47,8 @@ export function useNoteEditor() {
   }, [clearTimer]);
 
   const save = useCallback(async () => {
-    const { path, dirty, conflict } = stateRef.current;
-    if (!path || !dirty || conflict) return;
+    const { path, dirty, conflict, saving } = stateRef.current;
+    if (!path || !dirty || conflict || saving) return;
     clearTimer();
     const text = bufferRef.current;
     setState((s) => ({ ...s, saving: true }));
@@ -126,9 +126,11 @@ export function useNoteEditor() {
     if (!path || !conflict) return;
     try {
       const res = await api.save(path, bufferRef.current, conflict.hash);
+      if (stateRef.current.path !== path) return;
       baseHashRef.current = res.hash;
       setState((s) => ({ ...s, dirty: false, conflict: null }));
     } catch (err) {
+      if (stateRef.current.path !== path) return;
       if (err instanceof ApiError && err.status === 409) {
         const current = (err.body as { current: ConflictInfo }).current;
         setState((s) => ({ ...s, conflict: current }));
