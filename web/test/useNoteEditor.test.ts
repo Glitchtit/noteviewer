@@ -163,6 +163,33 @@ describe('useNoteEditor', () => {
     expect(result.current.state.dirty).toBe(false);
   });
 
+  it('keepMine sets saving true while its PUT is in flight, cleared after', async () => {
+    const { result } = await openNote();
+    act(() => result.current.handleChange('mine'));
+    mocked.note!.mockResolvedValue(noteResponse('theirs', 'h9'));
+    await act(() => result.current.external('a.md'));
+
+    let resolveSave!: (value: { mtimeMs: number; hash: string }) => void;
+    mocked.save!.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+
+    let keepMinePromise!: Promise<void>;
+    act(() => {
+      keepMinePromise = result.current.keepMine();
+    });
+    expect(result.current.state.saving).toBe(true);
+
+    await act(async () => {
+      resolveSave({ mtimeMs: 5, hash: 'h10' });
+      await keepMinePromise;
+    });
+    expect(result.current.state.saving).toBe(false);
+  });
+
   it('saveAsCopy creates a unique copy and switches to it', async () => {
     const { result } = await openNote();
     act(() => result.current.handleChange('mine'));

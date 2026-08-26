@@ -30,6 +30,17 @@ export function App() {
   const editor = useNoteEditor();
   const { path, title, content, revision, dirty, saving, conflict } = editor.state;
   const kanban = isKanbanNote(content);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+
+  async function openNote(p: string) {
+    setActionError(null);
+    try {
+      await editor.open(p);
+    } catch {
+      setActionError('Failed to open note.');
+    }
+  }
 
   const refreshTree = useCallback(() => {
     api.tree().then(setTree).catch(() => {});
@@ -94,6 +105,30 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Flush a dirty save when the tab is backgrounded/closed, and warn before
+  // an unload that would lose unsaved edits. Registered once; dirtyRef keeps
+  // the beforeunload handler reading the current dirty flag without needing
+  // to re-register on every dirty-state change.
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        void editor.saveNow();
+      }
+    }
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (dirtyRef.current) {
+        e.preventDefault();
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const ensureMd = (name: string) => (name.endsWith('.md') ? name : `${name}.md`);
 
   async function submitName(value: string) {
@@ -150,7 +185,13 @@ export function App() {
             onCancel={() => setNaming(null)}
           />
         )}
-        {tree && <FileTree root={tree} selected={path} onOpenNote={(p) => void editor.open(p)} />}
+        {tree && (
+          <FileTree
+            root={tree}
+            selected={path}
+            onOpenNote={(p) => { setSidebarOpen(false); void openNote(p); }}
+          />
+        )}
       </aside>
       <main className="main">
         <header className="topbar">
@@ -197,7 +238,7 @@ export function App() {
           kanban && boardMode ? (
             <KanbanBoard content={content} onChange={(md) => editor.applyLocalContent(md)} />
           ) : viewMode === 'read' ? (
-            <ReadingView content={editor.getBuffer()} tree={tree} onOpenNote={(p) => void editor.open(p)} />
+            <ReadingView content={editor.getBuffer()} tree={tree} onOpenNote={(p) => void openNote(p)} />
           ) : (
             <EditorPane
               ref={editorRef}
@@ -205,7 +246,7 @@ export function App() {
               initialContent={content}
               onChange={editor.handleChange}
               onSave={() => void editor.saveNow()}
-              onOpenLink={(t) => { const r = tree && resolveLink(tree, t); if (r) void editor.open(r); }}
+              onOpenLink={(t) => { const r = tree && resolveLink(tree, t); if (r) void openNote(r); }}
               noteNames={noteNames}
               resolveFile={(t) => (tree ? resolveLink(tree, t) : undefined)}
             />
@@ -218,7 +259,7 @@ export function App() {
         <RightPanel
           backlinks={editor.state.backlinks}
           headings={editor.state.headings}
-          onOpenNote={(p) => void editor.open(p)}
+          onOpenNote={(p) => void openNote(p)}
           onJumpToHeading={(h) => {
             const view = editorRef.current?.view;
             if (!view) return;
@@ -238,7 +279,7 @@ export function App() {
         <SearchOverlay
           mode={overlay}
           notePaths={noteNames.map((n) => `${n}.md`)}
-          onOpen={(p) => { setOverlay(null); void editor.open(p); }}
+          onOpen={(p) => { setOverlay(null); void openNote(p); }}
           onClose={() => setOverlay(null)}
         />
       )}

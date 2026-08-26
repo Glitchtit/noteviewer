@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
 import { api, ApiError } from '../src/api';
 
@@ -44,6 +44,10 @@ vi.mock('../src/components/KanbanBoard', () => ({
 
 const mocked = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
+function setVisibility(value: DocumentVisibilityState) {
+  Object.defineProperty(document, 'visibilityState', { value, configurable: true });
+}
+
 const tree = {
   name: '', path: '', type: 'folder' as const,
   children: [
@@ -64,6 +68,11 @@ function noteResponse(path: string, content: string) {
 beforeEach(() => {
   Object.values(mocked).forEach((fn) => fn.mockReset());
   mocked.tree!.mockResolvedValue(tree);
+});
+
+afterEach(() => {
+  setVisibility('visible');
+  vi.useRealTimers();
 });
 
 describe('App', () => {
@@ -235,5 +244,47 @@ describe('App', () => {
 
     expect(screen.getByTestId('mock-kanban-content').textContent).toContain('- [x] task one');
     expect(screen.getByTestId('save-state').textContent).toBe('Edited');
+  });
+
+  it('flushes a save when the tab becomes hidden', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'h2' });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+
+    // fake timers so the natural 1000ms autosave debounce can't fire and
+    // mask whether the visibilitychange handler itself triggers the save
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByTestId('mock-editor-change'));
+
+    setVisibility('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(mocked.save).toHaveBeenCalledWith('a.md', 'edited', 'h1');
+  });
+
+  it('opening a note from the tree also closes the mobile drawer', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    const { container } = render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle sidebar' }));
+    expect(container.querySelector('.app')!.className).toContain('sidebar-open');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+
+    expect(container.querySelector('.app')!.className).not.toContain('sidebar-open');
+  });
+
+  it('shows an error when opening a note fails', async () => {
+    mocked.note!.mockRejectedValue(new ApiError(500, 'boom'));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('action-error')).toBeTruthy());
+    expect(screen.getByTestId('action-error').textContent).toBe('Failed to open note.');
   });
 });

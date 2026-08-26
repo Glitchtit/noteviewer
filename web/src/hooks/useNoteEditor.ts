@@ -75,10 +75,11 @@ export function useNoteEditor() {
         }
       }
     })();
-    inflightRef.current = run.finally(() => {
-      inflightRef.current = null;
+    const p: Promise<void> = run.finally(() => {
+      if (inflightRef.current === p) inflightRef.current = null;
     });
-    return inflightRef.current;
+    inflightRef.current = p;
+    return p;
   }, [clearTimer, schedule]);
   saveRef.current = save;
 
@@ -150,6 +151,8 @@ export function useNoteEditor() {
   const keepMine = useCallback(async () => {
     const { path, conflict } = stateRef.current;
     if (!path || !conflict) return;
+    clearTimer();
+    setState((s) => ({ ...s, saving: true }));
     try {
       const res = await api.save(path, bufferRef.current, conflict.hash);
       if (stateRef.current.path !== path) return;
@@ -161,8 +164,10 @@ export function useNoteEditor() {
         const current = (err.body as { current: ConflictInfo }).current;
         setState((s) => ({ ...s, conflict: current }));
       }
+    } finally {
+      setState((s) => ({ ...s, saving: false }));
     }
-  }, []);
+  }, [clearTimer]);
 
   const saveAsCopy = useCallback(async () => {
     const { path } = stateRef.current;
@@ -183,10 +188,11 @@ export function useNoteEditor() {
         // network errors already surface via the offline banner (onNetworkError)
       }
     })();
-    inflightRef.current = run.finally(() => {
-      inflightRef.current = null;
+    const p: Promise<void> = run.finally(() => {
+      if (inflightRef.current === p) inflightRef.current = null;
     });
-    return inflightRef.current;
+    inflightRef.current = p;
+    return p;
   }, [clearTimer]);
 
   const clear = useCallback(() => {

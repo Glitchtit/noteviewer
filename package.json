@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p server --noEmit && tsc -p web --noEmit",
+    "typecheck": "tsc -p server --noEmit && tsc -p web --noEmit && tsc -p e2e --noEmit",
     "dev": "npm run dev -w server",
     "test:e2e": "npm run build -w web && playwright test"
   },
