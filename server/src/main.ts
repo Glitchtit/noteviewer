@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 
-const vaultRoot = process.env['VAULT_PATH'] ?? '/vault';
+const vaultRoot = path.resolve(process.env['VAULT_PATH'] ?? '/vault');
 const port = Number(process.env['PORT'] ?? 8080);
 const webDist = path.resolve(fileURLToPath(import.meta.url), '../../../web/dist');
 
