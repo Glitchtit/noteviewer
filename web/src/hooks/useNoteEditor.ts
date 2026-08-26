@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import type { Heading } from '@noteviewer/shared';
 import { api, ApiError } from '../api';
 
 export interface ConflictInfo {
@@ -16,13 +17,14 @@ export interface NoteEditorState {
   saving: boolean;
   conflict: ConflictInfo | null;
   backlinks: string[];
+  headings: Heading[];
 }
 
 const AUTOSAVE_MS = 1000;
 
 const EMPTY: NoteEditorState = {
   path: null, title: '', content: '', revision: 0,
-  dirty: false, saving: false, conflict: null, backlinks: [],
+  dirty: false, saving: false, conflict: null, backlinks: [], headings: [],
 };
 
 export function useNoteEditor() {
@@ -89,7 +91,7 @@ export function useNoteEditor() {
     baseHashRef.current = note.meta.hash;
     setState((s) => ({
       path, title: note.meta.title, content: note.content, revision: s.revision + 1,
-      dirty: false, saving: false, conflict: null, backlinks: note.backlinks,
+      dirty: false, saving: false, conflict: null, backlinks: note.backlinks, headings: note.meta.headings,
     }));
   }, [clearTimer, save]);
 
@@ -106,7 +108,7 @@ export function useNoteEditor() {
     if (stateRef.current.path !== path) return;
     if (note.meta.hash === baseHashRef.current) {
       // echo of our own save — refresh derived metadata only
-      setState((s) => ({ ...s, title: note.meta.title, backlinks: note.backlinks }));
+      setState((s) => ({ ...s, title: note.meta.title, backlinks: note.backlinks, headings: note.meta.headings }));
       return;
     }
     if (!stateRef.current.dirty) {
@@ -114,7 +116,7 @@ export function useNoteEditor() {
       baseHashRef.current = note.meta.hash;
       setState((s) => ({
         ...s, content: note.content, revision: s.revision + 1,
-        title: note.meta.title, backlinks: note.backlinks, conflict: null,
+        title: note.meta.title, backlinks: note.backlinks, headings: note.meta.headings, conflict: null,
       }));
     } else {
       setState((s) => ({

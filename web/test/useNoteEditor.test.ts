@@ -21,11 +21,11 @@ vi.mock('../src/api', async () => {
 
 const mocked = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
-function noteResponse(content: string, hash: string, title = 'T') {
+function noteResponse(content: string, hash: string, title = 'T', headings: { level: number; text: string }[] = []) {
   return {
     content,
     backlinks: ['ref.md'],
-    meta: { path: 'a.md', title, tags: [], links: [], headings: [], mtimeMs: 1, hash },
+    meta: { path: 'a.md', title, tags: [], links: [], headings, mtimeMs: 1, hash },
   };
 }
 
@@ -37,8 +37,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function openNote(hash = 'h1', content = 'body') {
-  mocked.note!.mockResolvedValue(noteResponse(content, hash));
+async function openNote(hash = 'h1', content = 'body', headings: { level: number; text: string }[] = []) {
+  mocked.note!.mockResolvedValue(noteResponse(content, hash, 'T', headings));
   const hook = renderHook(() => useNoteEditor());
   await act(() => hook.result.current.open('a.md'));
   return hook;
@@ -46,11 +46,13 @@ async function openNote(hash = 'h1', content = 'body') {
 
 describe('useNoteEditor', () => {
   it('open loads content, hash, backlinks', async () => {
-    const { result } = await openNote();
+    const headings = [{ level: 1, text: 'T' }];
+    const { result } = await openNote('h1', 'body', headings);
     expect(result.current.state.path).toBe('a.md');
     expect(result.current.state.content).toBe('body');
     expect(result.current.state.dirty).toBe(false);
     expect(result.current.state.backlinks).toEqual(['ref.md']);
+    expect(result.current.state.headings).toEqual(headings);
   });
 
   it('getBuffer reflects live keystrokes while state.content stays the loaded snapshot', async () => {

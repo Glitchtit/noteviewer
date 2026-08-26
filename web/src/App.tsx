@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TreeNode } from '@noteviewer/shared';
 import { api, ApiError, onNetworkError } from './api';
 import { ConflictBar } from './components/ConflictBar';
-import { EditorPane } from './components/EditorPane';
+import { EditorPane, type EditorPaneHandle } from './components/EditorPane';
 import { FileTree } from './components/FileTree';
 import { ReadingView } from './components/ReadingView';
+import { RightPanel } from './components/RightPanel';
 import { SearchOverlay } from './components/SearchOverlay';
 import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
@@ -21,6 +22,8 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'edit' | 'read'>('edit');
   const [overlay, setOverlay] = useState<'switcher' | 'search' | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const editorRef = useRef<EditorPaneHandle>(null);
   const editor = useNoteEditor();
   const { path, title, content, revision, dirty, saving, conflict } = editor.state;
 
@@ -156,6 +159,9 @@ export function App() {
               >
                 {viewMode === 'edit' ? 'Read' : 'Edit'}
               </button>
+              <button aria-label="Toggle right panel" onClick={() => setPanelOpen((o) => !o)}>
+                Panel
+              </button>
               <button onClick={() => { setActionError(null); setNaming({ mode: 'rename', from: path }); }}>Rename</button>
               {confirmingDelete ? (
                 <button className="danger" onClick={() => void doDelete()}>Really delete?</button>
@@ -182,6 +188,7 @@ export function App() {
             <ReadingView content={editor.getBuffer()} tree={tree} onOpenNote={(p) => void editor.open(p)} />
           ) : (
             <EditorPane
+              ref={editorRef}
               key={`${path}#${revision}`}
               initialContent={content}
               onChange={editor.handleChange}
@@ -195,6 +202,26 @@ export function App() {
           <div className="empty">Select a note</div>
         )}
       </main>
+      {panelOpen && (
+        <RightPanel
+          backlinks={editor.state.backlinks}
+          headings={editor.state.headings}
+          onOpenNote={(p) => void editor.open(p)}
+          onJumpToHeading={(h) => {
+            const view = editorRef.current?.view;
+            if (!view) return;
+            const re = new RegExp(`^#{${h.level}}\\s+${h.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
+            for (let i = 1; i <= view.state.doc.lines; i++) {
+              const line = view.state.doc.line(i);
+              if (re.test(line.text)) {
+                view.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
+                view.focus();
+                break;
+              }
+            }
+          }}
+        />
+      )}
       {overlay && (
         <SearchOverlay
           mode={overlay}
