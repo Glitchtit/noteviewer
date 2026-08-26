@@ -1,0 +1,15 @@
+{
+  "name": "noteviewer",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "server", "web"],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p server --noEmit",
+    "dev": "npm run dev -w server"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

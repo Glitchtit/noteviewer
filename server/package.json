@@ -1,0 +1,16 @@
+{
+  "name": "server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "tsx watch src/main.ts" },
+  "dependencies": {
+    "@fastify/static": "^8.0.0",
+    "@noteviewer/shared": "*",
+    "chokidar": "^4.0.0",
+    "fastify": "^5.0.0",
+    "gray-matter": "^4.0.3",
+    "minisearch": "^7.0.0",
+    "tsx": "^4.19.0"
+  }
+}
