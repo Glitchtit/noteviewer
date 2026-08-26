@@ -2,13 +2,18 @@
   "name": "noteviewer",
   "private": true,
   "type": "module",
-  "workspaces": ["shared", "server", "web"],
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p server --noEmit",
     "dev": "npm run dev -w server"
   },
   "devDependencies": {
+    "@types/node": "^26.3.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }
