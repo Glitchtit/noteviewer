@@ -104,6 +104,13 @@ function build(state: EditorState): DecorationSet {
       const info = state.doc.sliceString(node.from, Math.min(node.from + 20, node.to));
       if (!/^```\s*mermaid/.test(info)) return;
       if (regionTouched(state, node.from, node.to)) return;
+      // Same guard as the block-math widget above: a block-level
+      // `Decoration.replace` requires the range to align to whole lines.
+      // A fence nested in a blockquote has its node range start/end offset
+      // from the line boundaries by the `> ` prefix, so forcing `block: true`
+      // there corrupts CM6's line/DOM structure. Skip decorating (leave raw)
+      // when unaligned rather than risk that.
+      if (node.from !== doc.lineAt(node.from).from || node.to !== doc.lineAt(node.to).to) return;
       const src = state.doc
         .sliceString(node.from, node.to)
         .replace(/^```\s*mermaid\s*\n?/, '')

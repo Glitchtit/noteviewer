@@ -47,6 +47,16 @@ describe('block widgets', () => {
     view.destroy();
   });
 
+  it('does not render a mermaid fence nested in a blockquote as a block widget', () => {
+    const doc = 'x\n\n> ```mermaid\n> graph TD; A-->B;\n> ```\n\ny';
+    const view = viewWith(doc, 0);
+    expect(view.dom.querySelector('.cm-mermaid')).toBeFalsy();
+    // Every source line must stay intact as its own `.cm-line`, not be
+    // spliced around an orphaned block-widget sibling.
+    expect(view.dom.querySelectorAll('.cm-line').length).toBe(7);
+    view.destroy();
+  });
+
   it('adds callout line classes', () => {
     const doc = '> [!note] hi\n> body\n\nx';
     const view = viewWith(doc, doc.length);
