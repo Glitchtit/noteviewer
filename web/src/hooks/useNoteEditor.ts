@@ -33,6 +33,7 @@ export function useNoteEditor() {
   const baseHashRef = useRef('');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRef = useRef<() => Promise<void>>(async () => {});
+  const inflightRef = useRef<Promise<void> | null>(null);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -52,26 +53,35 @@ export function useNoteEditor() {
     clearTimer();
     const text = bufferRef.current;
     setState((s) => ({ ...s, saving: true }));
-    try {
-      const res = await api.save(path, text, baseHashRef.current);
-      baseHashRef.current = res.hash;
-      const stillDirty = bufferRef.current !== text;
-      setState((s) => ({ ...s, saving: false, dirty: stillDirty }));
-      if (stillDirty) schedule();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        const current = (err.body as { current: ConflictInfo }).current;
-        setState((s) => ({ ...s, saving: false, conflict: current }));
-      } else {
-        // network or server hiccup: keep dirty, retry after another interval
-        setState((s) => ({ ...s, saving: false }));
-        schedule();
+    const run = (async () => {
+      try {
+        const res = await api.save(path, text, baseHashRef.current);
+        if (stateRef.current.path !== path) return;
+        baseHashRef.current = res.hash;
+        const stillDirty = bufferRef.current !== text;
+        setState((s) => ({ ...s, saving: false, dirty: stillDirty }));
+        if (stillDirty) schedule();
+      } catch (err) {
+        if (stateRef.current.path !== path) return;
+        if (err instanceof ApiError && err.status === 409) {
+          const current = (err.body as { current: ConflictInfo }).current;
+          setState((s) => ({ ...s, saving: false, conflict: current }));
+        } else {
+          // network or server hiccup: keep dirty, retry after another interval
+          setState((s) => ({ ...s, saving: false }));
+          schedule();
+        }
       }
-    }
+    })();
+    inflightRef.current = run.finally(() => {
+      inflightRef.current = null;
+    });
+    return inflightRef.current;
   }, [clearTimer, schedule]);
   saveRef.current = save;
 
   const open = useCallback(async (path: string) => {
+    if (inflightRef.current) await inflightRef.current;
     if (stateRef.current.dirty && !stateRef.current.conflict) await save();
     clearTimer();
     const note = await api.note(path);

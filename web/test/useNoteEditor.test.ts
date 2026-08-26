@@ -242,4 +242,53 @@ describe('useNoteEditor', () => {
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(mocked.save).toHaveBeenCalledWith('b.md', 'bbb', 'hb');
   });
+
+  it('open waits for an in-flight autosave before loading the next note', async () => {
+    const { result } = await openNote(); // a.md, base hash h1
+    let resolveSave!: (value: { mtimeMs: number; hash: string }) => void;
+    mocked.save!.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    act(() => result.current.handleChange('mine'));
+    await act(() => vi.advanceTimersByTimeAsync(1000)); // fires the autosave; save() is now in flight
+    expect(mocked.save).toHaveBeenCalledWith('a.md', 'mine', 'h1');
+    expect(result.current.state.saving).toBe(true);
+
+    mocked.note!.mockClear();
+    mocked.note!.mockResolvedValue({
+      content: 'other', backlinks: [],
+      meta: { path: 'b.md', title: 'B', tags: [], links: [], headings: [], mtimeMs: 1, hash: 'hb' },
+    });
+
+    const openPromise = result.current.open('b.md');
+
+    // open() must block on the stale a.md save: it must not even fetch the
+    // next note until that save settles, not merely race ahead of it
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocked.note).not.toHaveBeenCalled();
+    expect(result.current.state.path).toBe('a.md');
+
+    await act(async () => {
+      resolveSave({ mtimeMs: 2, hash: 'h2' });
+      await openPromise;
+    });
+
+    expect(mocked.note).toHaveBeenCalledWith('b.md');
+    expect(result.current.state.path).toBe('b.md');
+    expect(result.current.state.dirty).toBe(false);
+    expect(result.current.state.conflict).toBeNull();
+
+    // and b.md's base hash must be its own ('hb'), not clobbered by the
+    // stale a.md save's response hash ('h2')
+    mocked.save!.mockClear();
+    mocked.save!.mockResolvedValue({ mtimeMs: 3, hash: 'h3' });
+    act(() => result.current.handleChange('bbb'));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(mocked.save).toHaveBeenCalledWith('b.md', 'bbb', 'hb');
+  });
 });
