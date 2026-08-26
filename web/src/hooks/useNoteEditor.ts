@@ -119,6 +119,9 @@ export function useNoteEditor() {
         title: note.meta.title, backlinks: note.backlinks, headings: note.meta.headings, conflict: null,
       }));
     } else {
+      // deliberately NOT refreshing headings/title/backlinks here: the editor still
+      // shows the dirty buffer, and the outline must match what's visible; metadata
+      // refreshes on conflict resolution.
       setState((s) => ({
         ...s,
         conflict: { content: note.content, hash: note.meta.hash, mtimeMs: note.meta.mtimeMs },

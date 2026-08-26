@@ -116,12 +116,16 @@ describe('useNoteEditor', () => {
   });
 
   it('external on dirty buffer sets conflict', async () => {
-    const { result } = await openNote();
+    const originalHeadings = [{ level: 1, text: 'Orig' }];
+    const { result } = await openNote('h1', 'body', originalHeadings);
     act(() => result.current.handleChange('mine'));
-    mocked.note!.mockResolvedValue(noteResponse('theirs', 'h9'));
+    mocked.note!.mockResolvedValue(noteResponse('theirs', 'h9', 'T', [{ level: 2, text: 'New' }]));
     await act(() => result.current.external('a.md'));
     expect(result.current.state.conflict?.content).toBe('theirs');
     expect(result.current.state.dirty).toBe(true);
+    // the editor still shows the dirty buffer, so the outline must not be
+    // refreshed from the incoming disk note until the conflict is resolved
+    expect(result.current.state.headings).toEqual(originalHeadings);
   });
 
   it('keepTheirs applies disk content; keepMine saves with conflict hash', async () => {
