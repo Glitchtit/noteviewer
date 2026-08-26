@@ -15,7 +15,7 @@ const base = EditorView.theme(
     },
     '&.cm-focused': { outline: 'none' },
     '.cm-cursor': { borderLeftColor: 'var(--accent)' },
-    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#3a3f58' },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: 'var(--selection)' },
     '.cm-line': { lineHeight: '1.6' },
   },
   { dark: true },
@@ -31,7 +31,7 @@ const highlight = HighlightStyle.define([
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   { tag: tags.link, color: 'var(--accent)' },
   { tag: tags.url, color: 'var(--accent)' },
-  { tag: tags.monospace, fontFamily: 'monospace', color: '#a8c0e0' },
+  { tag: tags.monospace, fontFamily: 'monospace', color: 'var(--code)' },
   { tag: tags.quote, color: 'var(--text-muted)', fontStyle: 'italic' },
   { tag: tags.processingInstruction, color: 'var(--text-muted)' },
 ]);

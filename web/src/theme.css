@@ -9,6 +9,8 @@
   --border: #333;
   --danger: #e05252;
   --warn: #d8a03c;
+  --selection: #3a3f58;
+  --code: #a8c0e0;
 }
 
 * { box-sizing: border-box; }
