@@ -54,6 +54,11 @@ describe('GET /api/note/*', () => {
     const { app } = await appFor({ 'img.png': 'binary' });
     expect((await app.inject({ url: '/api/note/img.png' })).statusCode).toBe(404);
   });
+
+  it('404s when the path is a directory named like a note', async () => {
+    const { app } = await appFor({ 'dir.md/inner.md': 'x' });
+    expect((await app.inject({ url: '/api/note/dir.md' })).statusCode).toBe(404);
+  });
 });
 
 describe('PUT /api/note/*', () => {

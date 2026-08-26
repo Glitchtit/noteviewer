@@ -6,6 +6,11 @@ import { isHiddenName } from './files.js';
 import type { VaultIndex } from './indexer.js';
 
 export class VaultBus extends EventEmitter {
+  constructor() {
+    super();
+    this.setMaxListeners(0);
+  }
+
   emitEvent(e: VaultEvent): void {
     this.emit('event', e);
   }

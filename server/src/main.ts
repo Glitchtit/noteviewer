@@ -18,5 +18,11 @@ const app = await buildApp({
   serveWeb: existsSync(webDist) ? webDist : undefined,
 });
 
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(sig, () => {
+    void app.close().then(() => process.exit(0));
+  });
+}
+
 await app.listen({ port, host: '0.0.0.0' });
 console.log(`noteviewer listening on :${port}, vault: ${vaultRoot}`);
