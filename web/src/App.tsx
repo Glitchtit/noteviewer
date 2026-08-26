@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TreeNode } from '@noteviewer/shared';
 import { api, ApiError } from './api';
+import { ConflictBar } from './components/ConflictBar';
 import { EditorPane } from './components/EditorPane';
 import { FileTree } from './components/FileTree';
 import { useNoteEditor } from './hooks/useNoteEditor';
@@ -13,7 +14,7 @@ export function App() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const editor = useNoteEditor();
-  const { path, title, content, revision, dirty, saving } = editor.state;
+  const { path, title, content, revision, dirty, saving, conflict } = editor.state;
 
   const refreshTree = useCallback(() => {
     api.tree().then(setTree).catch(() => {});
@@ -97,6 +98,13 @@ export function App() {
           </span>
         </header>
         {actionError && <div className="offline-banner" role="alert" data-testid="action-error">{actionError}</div>}
+        {conflict && (
+          <ConflictBar
+            onTheirs={editor.keepTheirs}
+            onMine={() => void editor.keepMine()}
+            onCopy={() => void editor.saveAsCopy()}
+          />
+        )}
         {path ? (
           <EditorPane
             key={`${path}#${revision}`}
