@@ -100,8 +100,10 @@ export function useNoteEditor() {
   }, [schedule]);
 
   const external = useCallback(async (path: string) => {
+    if (inflightRef.current) await inflightRef.current;
     if (path !== stateRef.current.path) return;
     const note = await api.note(path);
+    if (stateRef.current.path !== path) return;
     if (note.meta.hash === baseHashRef.current) {
       // echo of our own save — refresh derived metadata only
       setState((s) => ({ ...s, title: note.meta.title, backlinks: note.backlinks }));
@@ -152,13 +154,25 @@ export function useNoteEditor() {
     const { path } = stateRef.current;
     if (!path) return;
     clearTimer();
-    const res = await api.create(path, bufferRef.current, true);
-    baseHashRef.current = res.hash;
-    const title = res.path.replace(/^.*\//, '').replace(/\.md$/, '');
-    setState((s) => ({
-      ...s, path: res.path, title, content: bufferRef.current, revision: s.revision + 1,
-      dirty: false, conflict: null,
-    }));
+    const run = (async () => {
+      try {
+        const res = await api.create(path, bufferRef.current, true);
+        if (stateRef.current.path !== path) return;
+        baseHashRef.current = res.hash;
+        const title = res.path.replace(/^.*\//, '').replace(/\.md$/, '');
+        setState((s) => ({
+          ...s, path: res.path, title, content: bufferRef.current, revision: s.revision + 1,
+          dirty: false, conflict: null,
+        }));
+      } catch {
+        // leave the conflict state as-is so the user can retry from the bar;
+        // network errors already surface via the offline banner (onNetworkError)
+      }
+    })();
+    inflightRef.current = run.finally(() => {
+      inflightRef.current = null;
+    });
+    return inflightRef.current;
   }, [clearTimer]);
 
   const clear = useCallback(() => {

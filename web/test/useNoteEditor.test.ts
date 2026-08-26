@@ -243,6 +243,110 @@ describe('useNoteEditor', () => {
     expect(mocked.save).toHaveBeenCalledWith('b.md', 'bbb', 'hb');
   });
 
+  it('external() ignores a stale resolve after the path changed underneath it', async () => {
+    const { result } = await openNote('h1', 'body'); // a.md open, clean
+    let resolveExternal!: (v: ReturnType<typeof noteResponse>) => void;
+    mocked.note!.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveExternal = resolve;
+        }),
+    );
+    let externalPromise!: Promise<void>;
+    act(() => {
+      externalPromise = result.current.external('a.md');
+    });
+
+    // navigate to b.md while the external fetch for a.md is still pending
+    mocked.note!.mockResolvedValueOnce({
+      content: 'other', backlinks: [],
+      meta: { path: 'b.md', title: 'B', tags: [], links: [], headings: [], mtimeMs: 1, hash: 'hb' },
+    });
+    await act(() => result.current.open('b.md'));
+    expect(result.current.state.path).toBe('b.md');
+
+    // now the stale external fetch resolves with different content/hash
+    await act(async () => {
+      resolveExternal(noteResponse('stale content', 'h_stale'));
+      await externalPromise;
+    });
+
+    expect(result.current.state.path).toBe('b.md');
+    expect(result.current.state.content).toBe('other');
+    expect(result.current.state.conflict).toBeNull();
+
+    // follow-up autosave must use b.md's own base hash, not the stale one
+    mocked.save!.mockClear();
+    mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'hb2' });
+    act(() => result.current.handleChange('bbb'));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(mocked.save).toHaveBeenCalledWith('b.md', 'bbb', 'hb');
+  });
+
+  it('saveAsCopy: navigating away during create does not corrupt the new note', async () => {
+    const { result } = await openNote(); // a.md, base hash h1, clean
+    let resolveCreate!: (v: { path: string; mtimeMs: number; hash: string }) => void;
+    mocked.create!.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+    let saveAsCopyPromise!: Promise<void>;
+    act(() => {
+      saveAsCopyPromise = result.current.saveAsCopy();
+    });
+
+    // navigate away to b.md before the create() resolves
+    mocked.note!.mockClear();
+    mocked.note!.mockResolvedValue({
+      content: 'other', backlinks: [],
+      meta: { path: 'b.md', title: 'B', tags: [], links: [], headings: [], mtimeMs: 1, hash: 'hb' },
+    });
+    const openPromise = result.current.open('b.md');
+
+    // open() must block on the in-flight saveAsCopy, just like it blocks on
+    // an in-flight autosave — it must not fetch the next note until then
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocked.note).not.toHaveBeenCalled();
+    expect(result.current.state.path).toBe('a.md');
+
+    // now the create() resolves — saveAsCopy settles, then open() proceeds
+    await act(async () => {
+      resolveCreate({ path: 'a-copy.md', mtimeMs: 6, hash: 'hc' });
+      await saveAsCopyPromise;
+      await openPromise;
+    });
+
+    expect(mocked.note).toHaveBeenCalledWith('b.md');
+    expect(result.current.state.path).toBe('b.md');
+    expect(result.current.state.content).toBe('other');
+    expect(result.current.state.dirty).toBe(false);
+
+    // and b.md's base hash must not be clobbered by the stale create() response
+    mocked.save!.mockClear();
+    mocked.save!.mockResolvedValue({ mtimeMs: 7, hash: 'hb2' });
+    act(() => result.current.handleChange('bbb'));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(mocked.save).toHaveBeenCalledWith('b.md', 'bbb', 'hb');
+  });
+
+  it('saveAsCopy failure leaves state intact and does not throw', async () => {
+    const { result } = await openNote();
+    act(() => result.current.handleChange('mine'));
+    mocked.note!.mockResolvedValue(noteResponse('theirs', 'h9'));
+    await act(() => result.current.external('a.md'));
+    expect(result.current.state.conflict?.content).toBe('theirs');
+
+    mocked.create!.mockRejectedValue(new ApiError(500, 'boom'));
+    await act(() => result.current.saveAsCopy());
+
+    expect(result.current.state.conflict).not.toBeNull();
+    expect(result.current.state.path).toBe('a.md');
+  });
+
   it('open waits for an in-flight autosave before loading the next note', async () => {
     const { result } = await openNote(); // a.md, base hash h1
     let resolveSave!: (value: { mtimeMs: number; hash: string }) => void;

@@ -57,6 +57,7 @@ export function App() {
         const res = await api.create(target);
         await editor.open(res.path);
       } else if (naming?.mode === 'rename') {
+        await editor.saveNow();
         await api.rename(naming.from, target);
         await editor.open(target);
       }

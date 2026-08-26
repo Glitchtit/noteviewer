@@ -14,6 +14,14 @@ vi.mock('../src/api', async () => {
   };
 });
 
+vi.mock('../src/components/EditorPane', () => ({
+  EditorPane: ({ onChange }: { onChange(text: string): void }) => (
+    <button data-testid="mock-editor-change" onClick={() => onChange('edited')}>
+      mock editor
+    </button>
+  ),
+}));
+
 const mocked = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const tree = {
@@ -79,6 +87,29 @@ describe('App', () => {
     mocked.note!.mockResolvedValue(noteResponse('b.md', 'x'));
     fireEvent.submit(input.closest('form')!);
     await waitFor(() => expect(mocked.rename).toHaveBeenCalledWith('a.md', 'b.md'));
+  });
+
+  it('flushes a dirty save before renaming, using the old path', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'h2' });
+    mocked.rename!.mockResolvedValue({ rewritten: [] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+
+    fireEvent.click(screen.getByTestId('mock-editor-change'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    const input = screen.getByPlaceholderText('path/note.md') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'b.md' } });
+    mocked.note!.mockResolvedValue(noteResponse('b.md', 'x'));
+    fireEvent.submit(input.closest('form')!);
+
+    await waitFor(() => expect(mocked.rename).toHaveBeenCalledWith('a.md', 'b.md'));
+    expect(mocked.save).toHaveBeenCalledWith('a.md', 'edited', 'h1');
+    expect(mocked.save!.mock.invocationCallOrder[0]).toBeLessThan(
+      mocked.rename!.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('shows error when create fails with 409', async () => {
