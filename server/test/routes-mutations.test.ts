@@ -175,6 +175,13 @@ describe('GET /api/file/*', () => {
     expect(ok.body).toBe('<svg/>');
     expect((await app.inject({ url: '/api/file/.obsidian/app.json' })).statusCode).toBe(404);
   });
+
+  it('serves attachments whose path contains spaces', async () => {
+    const { app } = await appFor({ 'img dir/pic name.svg': '<svg/>' });
+    const res = await app.inject({ url: '/api/file/' + encodeURIComponent('img dir/pic name.svg').replace(/%2F/g, '/') });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe('<svg/>');
+  });
 });
 
 describe('GET /api/events', () => {

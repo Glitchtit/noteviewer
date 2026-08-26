@@ -60,6 +60,13 @@ describe('GET /api/note/*', () => {
     expect((await app.inject({ url: '/api/note/dir.md' })).statusCode).toBe(404);
   });
 
+  it('returns content for a note whose name contains spaces', async () => {
+    const { app } = await appFor({ 'my note.md': '# Spaced' });
+    const res = await app.inject({ url: '/api/note/' + encodeURIComponent('my note.md') });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().content).toBe('# Spaced');
+  });
+
   it('returns 400 for malformed percent-encoding in URL', async () => {
     // Fastify pre-decodes path parameters during routing; `GET /api/note/50%.md` has incomplete
     // percent-encoding (`%` without two hex digits), triggering FST_ERR_BAD_URL before the handler
@@ -104,6 +111,17 @@ describe('PUT /api/note/*', () => {
     });
     const res = await app.inject({ url: '/api/note/a.md' });
     expect(res.json().meta.title).toBe('Fresh');
+  });
+
+  it('saves a note whose name contains spaces', async () => {
+    const { app, root } = await appFor({ 'my note.md': 'v1' });
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/note/' + encodeURIComponent('my note.md'),
+      payload: { content: 'v2', baseHash: hashContent('v1') },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(await readFile(path.join(root, 'my note.md'), 'utf8')).toBe('v2');
   });
 
   it('404s writes into hidden directories', async () => {
