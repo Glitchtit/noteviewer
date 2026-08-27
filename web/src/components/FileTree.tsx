@@ -1,41 +1,73 @@
-import { useState } from 'react';
 import type { TreeNode } from '@noteviewer/shared';
 import { encodePath } from '../api';
 
 export interface FileTreeProps {
   root: TreeNode;
   selected: string | null;
+  expanded: ReadonlySet<string>;
   onOpenNote(path: string): void;
+  onToggleFolder(path: string): void;
 }
 
-export function FileTree({ root, selected, onOpenNote }: FileTreeProps) {
+export function collectFolderPaths(root: TreeNode): string[] {
+  const out: string[] = [];
+  const walk = (n: TreeNode) => {
+    if (n.type === 'folder' && n.path) out.push(n.path);
+    (n.children ?? []).forEach(walk);
+  };
+  walk(root);
+  return out;
+}
+
+export function FileTree({ root, selected, expanded, onOpenNote, onToggleFolder }: FileTreeProps) {
   return (
     <div className="filetree">
       {(root.children ?? []).map((n) => (
-        <TreeEntry key={n.path} node={n} selected={selected} onOpenNote={onOpenNote} depth={0} />
+        <TreeEntry
+          key={n.path}
+          node={n}
+          selected={selected}
+          expanded={expanded}
+          onOpenNote={onOpenNote}
+          onToggleFolder={onToggleFolder}
+          depth={0}
+        />
       ))}
     </div>
   );
 }
 
 function TreeEntry({
-  node, selected, onOpenNote, depth,
+  node, selected, expanded, onOpenNote, onToggleFolder, depth,
 }: {
-  node: TreeNode; selected: string | null; onOpenNote(p: string): void; depth: number;
+  node: TreeNode;
+  selected: string | null;
+  expanded: ReadonlySet<string>;
+  onOpenNote(p: string): void;
+  onToggleFolder(p: string): void;
+  depth: number;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
   const pad = { paddingLeft: `${8 + depth * 14}px` };
 
   if (node.type === 'folder') {
+    const open = expanded.has(node.path);
     return (
       <div>
-        <button className="tree-item tree-folder" style={pad} onClick={() => setCollapsed((c) => !c)}>
-          <span className="tree-chevron">{collapsed ? '▸' : '▾'}</span>
+        <button className="tree-item tree-folder" style={pad} onClick={() => onToggleFolder(node.path)}>
+          <span className="tree-chevron">{open ? '▾' : '▸'}</span>
           {node.name}
         </button>
-        {!collapsed &&
+        {open &&
           (node.children ?? []).map((c) => (
-            <TreeEntry key={c.path} node={c} selected={selected} onOpenNote={onOpenNote} depth={depth + 1} />
+            <TreeEntry
+              key={c.path}
+              node={c}
+              selected={selected}
+              expanded={expanded}
+              onOpenNote={onOpenNote}
+              onToggleFolder={onToggleFolder}
+              depth={depth + 1}
+            />
           ))}
       </div>
     );

@@ -20,6 +20,8 @@ test('typing autosaves to disk', async ({ page }) => {
 
 test('external change reloads a clean editor', async ({ page }) => {
   await page.goto('/');
+  // Folders start collapsed, so surface sub/Other.md via the expand-all button.
+  await page.getByRole('button', { name: 'Expand all folders' }).click();
   await page.getByRole('button', { name: 'Other' }).click();
   await expect(page.locator('.cm-content')).toContainText('Another note');
   writeFileSync(`${VAULT}/sub/Other.md`, '# Other\n\nChanged externally.\n');

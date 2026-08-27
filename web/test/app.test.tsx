@@ -87,6 +87,25 @@ describe('App', () => {
     expect(mocked.note).toHaveBeenCalledWith('a.md');
   });
 
+  it('starts with folders collapsed and expands/collapses all from the header', async () => {
+    mocked.tree!.mockResolvedValue({
+      name: '', path: '', type: 'folder' as const,
+      children: [
+        {
+          name: 'sub', path: 'sub', type: 'folder' as const,
+          children: [{ name: 'inner.md', path: 'sub/inner.md', type: 'note' as const }],
+        },
+      ],
+    });
+    render(<App />);
+    await screen.findByRole('button', { name: /sub/ });
+    expect(screen.queryByRole('button', { name: 'inner' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all folders' }));
+    expect(screen.getByRole('button', { name: 'inner' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all folders' }));
+    expect(screen.queryByRole('button', { name: 'inner' })).toBeNull();
+  });
+
   it('creates a note through the inline input', async () => {
     mocked.create!.mockResolvedValue({ path: 'new.md', mtimeMs: 1, hash: 'h' });
     mocked.note!.mockResolvedValue(noteResponse('new.md', ''));

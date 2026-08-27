@@ -3,7 +3,7 @@ import type { TreeNode } from '@noteviewer/shared';
 import { api, ApiError, onNetworkError } from './api';
 import { ConflictBar } from './components/ConflictBar';
 import { EditorPane, type EditorPaneHandle } from './components/EditorPane';
-import { FileTree } from './components/FileTree';
+import { collectFolderPaths, FileTree } from './components/FileTree';
 import { KanbanBoard } from './components/KanbanBoard';
 import { ReadingView } from './components/ReadingView';
 import { RightPanel } from './components/RightPanel';
@@ -22,6 +22,7 @@ export function App() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<ReadonlySet<string>>(new Set());
   const [viewMode, setViewMode] = useState<'edit' | 'read'>('edit');
   const [boardMode, setBoardMode] = useState(true);
   const [overlay, setOverlay] = useState<'switcher' | 'search' | null>(null);
@@ -177,6 +178,22 @@ export function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <button onClick={() => { setActionError(null); setNaming({ mode: 'create' }); }}>+ New</button>
+          <div className="tree-tools">
+            <button
+              title="Expand all folders"
+              aria-label="Expand all folders"
+              onClick={() => { if (tree) setExpandedFolders(new Set(collectFolderPaths(tree))); }}
+            >
+              ▾▾
+            </button>
+            <button
+              title="Collapse all folders"
+              aria-label="Collapse all folders"
+              onClick={() => setExpandedFolders(new Set())}
+            >
+              ▸▸
+            </button>
+          </div>
         </div>
         {naming && (
           <NameInput
@@ -189,7 +206,15 @@ export function App() {
           <FileTree
             root={tree}
             selected={path}
+            expanded={expandedFolders}
             onOpenNote={(p) => { setSidebarOpen(false); void openNote(p); }}
+            onToggleFolder={(p) => {
+              setExpandedFolders((prev) => {
+                const next = new Set(prev);
+                if (next.has(p)) next.delete(p); else next.add(p);
+                return next;
+              });
+            }}
           />
         )}
       </aside>
