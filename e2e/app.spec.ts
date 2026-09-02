@@ -83,3 +83,17 @@ test('kanban note renders as a board and drag targets exist', async ({ page }) =
   await expect(page.locator('.kanban-col')).toHaveCount(2);
   await expect(page.locator('.kanban-card')).toHaveCount(1);
 });
+
+test('graph view renders the vault and opens a note from the filter', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Rich', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Toggle graph view' }).click();
+  await expect(page.getByTestId('note-title')).toHaveText('Graph');
+  await expect(page.getByRole('img', { name: 'Note graph' })).toBeVisible();
+  // Fixture vault: Welcome -> sub/Other, Rich -> Welcome.
+  await expect(page.getByTestId('graph-status')).toContainText(/\d+ notes · 2 links/);
+  await page.getByLabel('Filter graph').fill('rich');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('note-title')).toHaveText('Rich');
+  await expect(page.locator('.cm-content')).toContainText('bold');
+});

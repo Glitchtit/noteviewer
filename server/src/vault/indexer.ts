@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import MiniSearch from 'minisearch';
-import type { NoteMeta, SearchResult } from '@noteviewer/shared';
+import type { GraphData, GraphEdge, GraphNode, NoteMeta, SearchResult } from '@noteviewer/shared';
 import { isHiddenName, readNote } from './files.js';
 import { parseNote } from './parse.js';
 
@@ -85,6 +85,60 @@ export class VaultIndex {
       if (meta.links.some((l) => this.resolveLink(l) === rel)) out.push(meta.path);
     }
     return out.sort();
+  }
+
+  /**
+   * Whole-vault link graph. Every note is a node; every wikilink becomes a
+   * directed edge from the note to its resolved target. Links that resolve
+   * to nothing on disk become `unresolved` nodes keyed by the cleaned link
+   * text, matching Obsidian's greyed-out "phantom" nodes. Self-links and
+   * duplicate links within one note are collapsed.
+   */
+  graph(): GraphData {
+    const nodes = new Map<string, GraphNode>();
+    for (const meta of this.notes.values()) {
+      nodes.set(meta.path, {
+        id: meta.path,
+        title: meta.title,
+        tags: meta.tags,
+        unresolved: false,
+        inbound: 0,
+        outbound: 0,
+      });
+    }
+    const edges: GraphEdge[] = [];
+    const paths = [...this.notes.keys()].sort();
+    for (const source of paths) {
+      const meta = this.notes.get(source)!;
+      const seen = new Set<string>();
+      for (const raw of meta.links) {
+        const resolved = this.resolveLink(raw);
+        let target: string;
+        if (resolved) {
+          target = resolved;
+        } else {
+          const clean = raw.split('#')[0]!.split('|')[0]!.trim();
+          if (!clean) continue;
+          target = clean;
+          if (!nodes.has(target)) {
+            nodes.set(target, {
+              id: target,
+              title: clean.replace(/\.md$/i, ''),
+              tags: [],
+              unresolved: true,
+              inbound: 0,
+              outbound: 0,
+            });
+          }
+        }
+        if (target === source || seen.has(target)) continue;
+        seen.add(target);
+        edges.push({ source, target });
+        nodes.get(source)!.outbound += 1;
+        nodes.get(target)!.inbound += 1;
+      }
+    }
+    return { nodes: [...nodes.values()], edges };
   }
 
   search(q: string): SearchResult[] {

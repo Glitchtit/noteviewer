@@ -4,6 +4,7 @@ import { api, ApiError, onNetworkError } from './api';
 import { ConflictBar } from './components/ConflictBar';
 import { EditorPane, type EditorPaneHandle } from './components/EditorPane';
 import { collectFolderPaths, FileTree } from './components/FileTree';
+import { GraphView } from './components/GraphView';
 import { KanbanBoard } from './components/KanbanBoard';
 import { ReadingView } from './components/ReadingView';
 import { RightPanel } from './components/RightPanel';
@@ -27,6 +28,9 @@ export function App() {
   const [boardMode, setBoardMode] = useState(true);
   const [overlay, setOverlay] = useState<'switcher' | 'search' | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [graphOpen, setGraphOpen] = useState(false);
+  // Incremented on every vault event; GraphView debounces and refetches.
+  const [graphVersion, setGraphVersion] = useState(0);
   const editorRef = useRef<EditorPaneHandle>(null);
   const editor = useNoteEditor();
   const { path, title, revision, dirty, saving, conflict } = editor.state;
@@ -74,13 +78,15 @@ export function App() {
   }, [offline]);
 
   useVaultEvents({
-    onTreeChanged: refreshTree,
-    onNoteChanged: (p) => void editor.external(p),
+    onTreeChanged: () => { refreshTree(); setGraphVersion((v) => v + 1); },
+    onNoteChanged: (p) => { void editor.external(p); setGraphVersion((v) => v + 1); },
   });
 
   useEffect(() => refreshTree(), [refreshTree]);
   useEffect(() => setConfirmingDelete(false), [path]);
   useEffect(() => setBoardMode(true), [path]);
+  // Opening any note (tree, switcher, graph node, create) leaves the graph.
+  useEffect(() => setGraphOpen(false), [path]);
 
   // Ctrl/Cmd+E toggles reading mode globally. state.content is only the
   // last-applied snapshot (set by open/external/keepTheirs/saveAsCopy) — it
@@ -99,6 +105,9 @@ export function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         setOverlay('search');
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        setGraphOpen((g) => !g);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -145,6 +154,28 @@ export function App() {
         await editor.open(target);
       }
       setNaming(null);
+      refreshTree();
+    } catch (err) {
+      const message = err instanceof ApiError
+        ? err.status === 409
+          ? 'A note with that name already exists.'
+          : `Operation failed (${err.status}).`
+        : 'Operation failed.';
+      setActionError(message);
+    }
+  }
+
+  async function openFromGraph(p: string) {
+    setGraphOpen(false);
+    await openNote(p);
+  }
+
+  async function createFromGraph(name: string) {
+    setActionError(null);
+    try {
+      const res = await api.create(ensureMd(name));
+      setGraphOpen(false);
+      await editor.open(res.path);
       refreshTree();
     } catch (err) {
       const message = err instanceof ApiError
@@ -221,8 +252,16 @@ export function App() {
       <main className="main">
         <header className="topbar">
           <button className="hamburger" aria-label="Toggle sidebar" onClick={() => setSidebarOpen((o) => !o)}>☰</button>
-          <span className="title" data-testid="note-title">{path ? title : 'noteviewer'}</span>
-          {path && (
+          <span className="title" data-testid="note-title">{graphOpen ? 'Graph' : path ? title : 'noteviewer'}</span>
+          <button
+            aria-label="Toggle graph view"
+            aria-pressed={graphOpen}
+            title="Graph view (Ctrl+G)"
+            onClick={() => { void editor.saveNow(); setGraphOpen((g) => !g); }}
+          >
+            {graphOpen ? 'Close graph' : 'Graph'}
+          </button>
+          {path && !graphOpen && (
             <>
               <button
                 aria-label="Toggle reading mode"
@@ -259,7 +298,14 @@ export function App() {
             onCopy={() => void editor.saveAsCopy()}
           />
         )}
-        {path ? (
+        {graphOpen ? (
+          <GraphView
+            currentPath={path}
+            refreshKey={graphVersion}
+            onOpenNote={(p) => void openFromGraph(p)}
+            onCreateNote={(n) => void createFromGraph(n)}
+          />
+        ) : path ? (
           kanban && boardMode ? (
             <KanbanBoard content={editor.getBuffer()} onChange={(md) => editor.applyLocalContent(md)} />
           ) : viewMode === 'read' ? (

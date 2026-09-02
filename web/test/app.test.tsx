@@ -9,7 +9,7 @@ vi.mock('../src/api', async () => {
     ...actual,
     api: {
       tree: vi.fn(), note: vi.fn(), save: vi.fn(), create: vi.fn(),
-      remove: vi.fn(), rename: vi.fn(), search: vi.fn(),
+      remove: vi.fn(), rename: vi.fn(), search: vi.fn(), graph: vi.fn(),
     },
   };
 });
@@ -28,6 +28,17 @@ vi.mock('../src/components/EditorPane', () => ({
 vi.mock('../src/components/ReadingView', () => ({
   ReadingView: ({ content }: { content: string }) => (
     <div data-testid="mock-reading-view">{content}</div>
+  ),
+}));
+
+vi.mock('../src/components/GraphView', () => ({
+  GraphView: ({ currentPath, onOpenNote, onCreateNote }: {
+    currentPath: string | null; onOpenNote(p: string): void; onCreateNote?(n: string): void;
+  }) => (
+    <div data-testid="mock-graph-view" data-current={currentPath ?? ''}>
+      <button data-testid="mock-graph-open" onClick={() => onOpenNote('b.md')}>open b</button>
+      <button data-testid="mock-graph-create" onClick={() => onCreateNote?.('Ghost')}>create ghost</button>
+    </div>
   ),
 }));
 
@@ -324,5 +335,70 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'a' }));
     await waitFor(() => expect(screen.getByTestId('action-error')).toBeTruthy());
     expect(screen.getByTestId('action-error').textContent).toBe('Failed to open note.');
+  });
+});
+
+describe('App graph view', () => {
+  it('toggles the graph from the topbar and via Ctrl+G', async () => {
+    render(<App />);
+    await screen.findByRole('button', { name: 'a' });
+    expect(screen.queryByTestId('mock-graph-view')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle graph view' }));
+    expect(screen.getByTestId('mock-graph-view')).toBeTruthy();
+    expect(screen.getByTestId('note-title').textContent).toBe('Graph');
+    expect(screen.getByRole('button', { name: 'Toggle graph view' }).textContent).toBe('Close graph');
+    fireEvent.keyDown(window, { key: 'g', ctrlKey: true });
+    expect(screen.queryByTestId('mock-graph-view')).toBeNull();
+    expect(screen.getByTestId('note-title').textContent).toBe('noteviewer');
+  });
+
+  it('passes the open note as the centre, hides note actions, and closes on node open', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle graph view' }));
+    expect(screen.getByTestId('mock-graph-view').getAttribute('data-current')).toBe('a.md');
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(screen.queryByTestId('mock-editor-change')).toBeNull();
+
+    mocked.note!.mockResolvedValue(noteResponse('b.md', 'y'));
+    fireEvent.click(screen.getByTestId('mock-graph-open'));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('b'));
+    expect(screen.queryByTestId('mock-graph-view')).toBeNull();
+    expect(screen.getByTestId('mock-editor-change')).toBeTruthy();
+  });
+
+  it('opening a note from the tree closes the graph', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    render(<App />);
+    await screen.findByRole('button', { name: 'a' });
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle graph view' }));
+    expect(screen.getByTestId('mock-graph-view')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    expect(screen.queryByTestId('mock-graph-view')).toBeNull();
+  });
+
+  it('creates a missing note from an unresolved graph node', async () => {
+    mocked.create!.mockResolvedValue({ path: 'Ghost.md', mtimeMs: 1, hash: 'h' });
+    mocked.note!.mockResolvedValue(noteResponse('Ghost.md', ''));
+    render(<App />);
+    await screen.findByRole('button', { name: 'a' });
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle graph view' }));
+    fireEvent.click(screen.getByTestId('mock-graph-create'));
+    await waitFor(() => expect(mocked.create).toHaveBeenCalledWith('Ghost.md'));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('Ghost'));
+    expect(screen.queryByTestId('mock-graph-view')).toBeNull();
+  });
+
+  it('reports a failed create from the graph and stays on the graph', async () => {
+    mocked.create!.mockRejectedValue(new ApiError(409, 'conflict'));
+    render(<App />);
+    await screen.findByRole('button', { name: 'a' });
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle graph view' }));
+    fireEvent.click(screen.getByTestId('mock-graph-create'));
+    await waitFor(() => expect(screen.getByTestId('action-error').textContent).toBe('A note with that name already exists.'));
+    expect(screen.getByTestId('mock-graph-view')).toBeTruthy();
   });
 });

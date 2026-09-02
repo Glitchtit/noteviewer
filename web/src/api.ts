@@ -1,4 +1,4 @@
-import type { NoteResponse, SearchResult, TreeNode } from '@noteviewer/shared';
+import type { GraphData, NoteResponse, SearchResult, TreeNode } from '@noteviewer/shared';
 
 export class ApiError extends Error {
   constructor(
@@ -57,4 +57,5 @@ export const api = {
       body: JSON.stringify({ from, to }),
     }),
   search: (q: string) => request<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`),
+  graph: () => request<GraphData>('/api/graph'),
 };
