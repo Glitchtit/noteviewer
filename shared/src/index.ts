@@ -38,3 +38,26 @@ export interface SearchResult {
 export type VaultEvent =
   | { type: 'note-changed'; path: string }
   | { type: 'tree-changed' };
+
+export interface GraphNode {
+  /** vault-relative path for resolved notes; the raw link target for unresolved ones */
+  id: string;
+  title: string;
+  tags: string[];
+  /** true when the node is a wikilink target with no matching note on disk */
+  unresolved: boolean;
+  /** number of resolved notes linking to this node */
+  inbound: number;
+  /** number of distinct outgoing link targets */
+  outbound: number;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}

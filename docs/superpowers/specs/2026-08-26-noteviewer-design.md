@@ -184,7 +184,6 @@ dirty indicator — no client-side write queue. Deletes always go to
 ## Out of scope for v1
 
 - Tabs / split panes (architecture must allow later addition)
-- Graph view
 - Merge/diff UI for conflicts (superseded by "save as copy")
 - Any authentication inside the app
 - Light theme
