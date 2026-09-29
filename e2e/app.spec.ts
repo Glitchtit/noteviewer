@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
 const VAULT = 'e2e/.vault';
@@ -96,4 +96,29 @@ test('graph view renders the vault and opens a note from the filter', async ({ p
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('note-title')).toHaveText('Rich');
   await expect(page.locator('.cm-content')).toContainText('bold');
+});
+
+test('drag a note onto a folder moves it on disk', async ({ page, request }) => {
+  await request.post('/api/note', { data: { path: 'Movable.md', content: '# Movable\n' } });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Movable' }).dragTo(page.getByRole('button', { name: /sub/ }));
+  // The target folder is expanded after the move so the note stays visible.
+  await expect(page.getByRole('button', { name: 'Movable' })).toBeVisible();
+  await expect.poll(() => existsSync(`${VAULT}/sub/Movable.md`)).toBe(true);
+  expect(existsSync(`${VAULT}/Movable.md`)).toBe(false);
+});
+
+test('context menu creates a copy and deletes a note', async ({ page, request }) => {
+  await request.post('/api/note', { data: { path: 'Scratch.md', content: 'scratch body\n' } });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Scratch', exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Create copy' }).click();
+  await expect(page.getByTestId('note-title')).toHaveText('Scratch-copy');
+  expect(readFileSync(`${VAULT}/Scratch-copy.md`, 'utf8')).toBe('scratch body\n');
+
+  await page.getByRole('button', { name: 'Scratch', exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  await page.getByRole('menuitem', { name: 'Really delete?' }).click();
+  await expect(page.getByRole('button', { name: 'Scratch', exact: true })).toHaveCount(0);
+  expect(existsSync(`${VAULT}/Scratch.md`)).toBe(false);
 });

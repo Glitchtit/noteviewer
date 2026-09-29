@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { TreeNode } from '@noteviewer/shared';
 import { collectFolderPaths, FileTree } from '../src/components/FileTree';
@@ -17,9 +17,11 @@ const fixture: TreeNode = {
 };
 
 function Harness({
-  selected = null, onOpenNote = () => {}, initialExpanded = [],
+  selected = null, onOpenNote = () => {}, initialExpanded = [], onContextMenu, onMoveNote,
 }: {
   selected?: string | null; onOpenNote?(p: string): void; initialExpanded?: string[];
+  onContextMenu?(node: TreeNode, x: number, y: number): void;
+  onMoveNote?(from: string, toFolder: string): void;
 }) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set(initialExpanded));
   return (
@@ -28,6 +30,8 @@ function Harness({
       selected={selected}
       expanded={expanded}
       onOpenNote={onOpenNote}
+      onContextMenu={onContextMenu}
+      onMoveNote={onMoveNote}
       onToggleFolder={(p) => {
         setExpanded((prev) => {
           const next = new Set(prev);
@@ -66,6 +70,87 @@ describe('FileTree', () => {
     const link = screen.getByRole('link', { name: 'img.png' }) as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('/api/file/img.png');
     expect(screen.getByRole('button', { name: 'a' }).className).toContain('selected');
+  });
+});
+
+/** jsdom has no DataTransfer; one fake shared across a drag's events stands in. */
+function fakeDataTransfer() {
+  const data: Record<string, string> = {};
+  return {
+    get types() { return Object.keys(data); },
+    setData(type: string, value: string) { data[type] = value; },
+    getData(type: string) { return data[type] ?? ''; },
+    dropEffect: 'none',
+    effectAllowed: 'all',
+  };
+}
+
+describe('FileTree context menu', () => {
+  it('reports right-clicks on notes, folders and empty space', () => {
+    const onMenu = vi.fn();
+    const { container } = render(<Harness onContextMenu={onMenu} />);
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'a' }), { clientX: 5, clientY: 6 });
+    expect(onMenu).toHaveBeenLastCalledWith(expect.objectContaining({ path: 'a.md' }), 5, 6);
+    fireEvent.contextMenu(screen.getByRole('button', { name: /sub/ }));
+    expect(onMenu).toHaveBeenLastCalledWith(expect.objectContaining({ path: 'sub', type: 'folder' }), 0, 0);
+    fireEvent.contextMenu(container.querySelector('.filetree')!);
+    expect(onMenu).toHaveBeenLastCalledWith(expect.objectContaining({ path: '' }), 0, 0);
+    expect(onMenu).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('FileTree drag and drop', () => {
+  it('moves a note dropped on another folder', () => {
+    const onMove = vi.fn();
+    render(<Harness onMoveNote={onMove} />);
+    const dt = fakeDataTransfer();
+    const note = screen.getByRole('button', { name: 'a' });
+    const folder = screen.getByRole('button', { name: /sub/ });
+    expect(note.getAttribute('draggable')).toBe('true');
+    fireEvent.dragStart(note, { dataTransfer: dt });
+    fireEvent.dragOver(folder, { dataTransfer: dt });
+    expect(folder.parentElement!.className).toContain('drop-target');
+    fireEvent.drop(folder, { dataTransfer: dt });
+    expect(onMove).toHaveBeenCalledWith('a.md', 'sub');
+    expect(folder.parentElement!.className).not.toContain('drop-target');
+  });
+
+  it('moves a nested note to the root when dropped on empty space', () => {
+    const onMove = vi.fn();
+    const { container } = render(<Harness onMoveNote={onMove} initialExpanded={['sub']} />);
+    const dt = fakeDataTransfer();
+    fireEvent.dragStart(screen.getByRole('button', { name: 'inner' }), { dataTransfer: dt });
+    fireEvent.drop(container.querySelector('.filetree')!, { dataTransfer: dt });
+    expect(onMove).toHaveBeenCalledWith('sub/inner.md', '');
+  });
+
+  it('ignores a drop into the note\'s own folder', () => {
+    const onMove = vi.fn();
+    render(<Harness onMoveNote={onMove} initialExpanded={['sub']} />);
+    const dt = fakeDataTransfer();
+    fireEvent.dragStart(screen.getByRole('button', { name: 'inner' }), { dataTransfer: dt });
+    fireEvent.drop(screen.getByRole('button', { name: /sub/ }), { dataTransfer: dt });
+    expect(onMove).not.toHaveBeenCalled();
+  });
+
+  it('expands a collapsed folder while a note hovers over it', () => {
+    vi.useFakeTimers();
+    try {
+      render(<Harness onMoveNote={() => {}} />);
+      const dt = fakeDataTransfer();
+      fireEvent.dragStart(screen.getByRole('button', { name: 'a' }), { dataTransfer: dt });
+      fireEvent.dragOver(screen.getByRole('button', { name: /sub/ }), { dataTransfer: dt });
+      expect(screen.queryByRole('button', { name: 'inner' })).toBeNull();
+      act(() => { vi.advanceTimersByTime(600); });
+      expect(screen.getByRole('button', { name: 'inner' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('is not draggable without an onMoveNote handler', () => {
+    render(<Harness />);
+    expect(screen.getByRole('button', { name: 'a' }).getAttribute('draggable')).not.toBe('true');
   });
 });
 

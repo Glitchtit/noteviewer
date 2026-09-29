@@ -156,6 +156,83 @@ describe('App', () => {
     await waitFor(() => expect(mocked.rename).toHaveBeenCalledWith('a.md', 'b.md'));
   });
 
+  it('creates a copy from the tree context menu and opens it', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'body'));
+    mocked.create!.mockResolvedValue({ path: 'a-copy.md', mtimeMs: 1, hash: 'h' });
+    render(<App />);
+    fireEvent.contextMenu(await screen.findByRole('button', { name: 'a' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create copy' }));
+    await waitFor(() => expect(mocked.create).toHaveBeenCalledWith('a.md', 'body', true));
+    await waitFor(() => expect(mocked.note).toHaveBeenLastCalledWith('a-copy.md'));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('renames a note that is not open without navigating to it', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    mocked.rename!.mockResolvedValue({ rewritten: [] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'b' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const input = screen.getByPlaceholderText('path/note.md') as HTMLInputElement;
+    expect(input.value).toBe('b.md');
+    fireEvent.change(input, { target: { value: 'c.md' } });
+    fireEvent.submit(input.closest('form')!);
+    await waitFor(() => expect(mocked.rename).toHaveBeenCalledWith('b.md', 'c.md'));
+    expect(mocked.note).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('note-title').textContent).toBe('a');
+  });
+
+  it('deletes from the context menu after confirming, keeping the open note', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    mocked.remove!.mockResolvedValue({ trashedTo: '.trash/b.md' });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'b' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(mocked.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Really delete?' }));
+    await waitFor(() => expect(mocked.remove).toHaveBeenCalledWith('b.md'));
+    expect(screen.getByTestId('note-title').textContent).toBe('a');
+  });
+
+  it('moves the open note into a folder by drag and drop and follows it', async () => {
+    mocked.tree!.mockResolvedValue({
+      ...tree,
+      children: [{ name: 'sub', path: 'sub', type: 'folder' as const, children: [] }, ...tree.children],
+    });
+    mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
+    mocked.rename!.mockResolvedValue({ rewritten: [] });
+    render(<App />);
+    const note = await screen.findByRole('button', { name: 'a' });
+    fireEvent.click(note);
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    const data: Record<string, string> = {};
+    const dataTransfer = {
+      get types() { return Object.keys(data); },
+      setData: (t: string, v: string) => { data[t] = v; },
+      getData: (t: string) => data[t] ?? '',
+    };
+    mocked.note!.mockResolvedValue(noteResponse('sub/a.md', 'x'));
+    fireEvent.dragStart(note, { dataTransfer });
+    fireEvent.drop(screen.getByRole('button', { name: /sub/ }), { dataTransfer });
+    await waitFor(() => expect(mocked.rename).toHaveBeenCalledWith('a.md', 'sub/a.md'));
+    await waitFor(() => expect(mocked.note).toHaveBeenLastCalledWith('sub/a.md'));
+  });
+
+  it('pre-fills the folder when creating a note from a folder menu', async () => {
+    mocked.tree!.mockResolvedValue({
+      ...tree,
+      children: [{ name: 'sub', path: 'sub', type: 'folder' as const, children: [] }, ...tree.children],
+    });
+    render(<App />);
+    fireEvent.contextMenu(await screen.findByRole('button', { name: /sub/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New note here' }));
+    expect((screen.getByPlaceholderText('path/note.md') as HTMLInputElement).value).toBe('sub/');
+  });
+
   it('flushes a dirty save before renaming, using the old path', async () => {
     mocked.note!.mockResolvedValue(noteResponse('a.md', 'x'));
     mocked.save!.mockResolvedValue({ mtimeMs: 2, hash: 'h2' });

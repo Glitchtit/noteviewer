@@ -36,6 +36,14 @@ describe('api client', () => {
     expect(JSON.parse(init.body)).toEqual({ content: 'new', baseHash: 'h1' });
   });
 
+  it('sends DELETE without a JSON content-type (the server rejects an empty JSON body)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { trashedTo: '.trash/a.md' }));
+    await api.remove('a.md');
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(init.method).toBe('DELETE');
+    expect(init.headers['content-type']).toBeUndefined();
+  });
+
   it('throws ApiError with body on 409', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(409, { current: { content: 'disk', mtimeMs: 2, hash: 'hd' } }),

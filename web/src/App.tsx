@@ -3,6 +3,7 @@ import { PROFILE_TEMPLATE, type AiStatus, type TreeNode } from '@noteviewer/shar
 import { api, ApiError, onNetworkError } from './api';
 import { AiPanel, type ApplyMode } from './components/AiPanel';
 import { ConflictBar } from './components/ConflictBar';
+import { ContextMenu, type ContextMenuItem } from './components/ContextMenu';
 import { EditorPane, type EditorPaneHandle } from './components/EditorPane';
 import { collectFolderPaths, FileTree } from './components/FileTree';
 import { GraphView } from './components/GraphView';
@@ -16,11 +17,14 @@ import { exportPdf } from './exportPdf';
 import { isKanbanNote } from './kanban';
 import { resolveLink } from './resolveLink';
 
-type Naming = { mode: 'create' } | { mode: 'rename'; from: string } | null;
+type Naming = { mode: 'create'; folder?: string } | { mode: 'rename'; from: string } | null;
+type TreeMenu = { node: TreeNode; x: number; y: number } | null;
 
 export function App() {
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [naming, setNaming] = useState<Naming>(null);
+  const [treeMenu, setTreeMenu] = useState<TreeMenu>(null);
+  const closeTreeMenu = useCallback(() => setTreeMenu(null), []);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
@@ -160,20 +164,71 @@ export function App() {
         const res = await api.create(target);
         await editor.open(res.path);
       } else if (naming?.mode === 'rename') {
-        await editor.saveNow();
-        await api.rename(naming.from, target);
-        await editor.open(target);
+        await renameNote(naming.from, target);
       }
       setNaming(null);
       refreshTree();
     } catch (err) {
-      const message = err instanceof ApiError
-        ? err.status === 409
-          ? 'A note with that name already exists.'
-          : `Operation failed (${err.status}).`
-        : 'Operation failed.';
-      setActionError(message);
+      showMutationError(err);
     }
+  }
+
+  // Flushes pending edits first so the rename moves the latest content, and
+  // follows the note to its new path when it's the one open in the editor.
+  async function renameNote(from: string, to: string) {
+    await editor.saveNow();
+    await api.rename(from, to);
+    if (from === path) await editor.open(to);
+  }
+
+  function showMutationError(err: unknown) {
+    setActionError(err instanceof ApiError
+      ? err.status === 409
+        ? 'A note with that name already exists.'
+        : `Operation failed (${err.status}).`
+      : 'Operation failed.');
+  }
+
+  async function moveNote(from: string, toFolder: string) {
+    setActionError(null);
+    const name = from.slice(from.lastIndexOf('/') + 1);
+    try {
+      await renameNote(from, toFolder ? `${toFolder}/${name}` : name);
+      if (toFolder) setExpandedFolders((prev) => new Set(prev).add(toFolder));
+      refreshTree();
+    } catch (err) {
+      showMutationError(err);
+    }
+  }
+
+  async function copyNote(p: string) {
+    setActionError(null);
+    try {
+      if (p === path) await editor.saveNow();
+      const { content } = await api.note(p);
+      const res = await api.create(p, content, true);
+      refreshTree();
+      await editor.open(res.path);
+    } catch (err) {
+      showMutationError(err);
+    }
+  }
+
+  function treeMenuItems(node: TreeNode): ContextMenuItem[] {
+    if (node.type === 'note') {
+      return [
+        { label: 'Open', onSelect: () => { setSidebarOpen(false); void openNote(node.path); } },
+        { label: 'Create copy', onSelect: () => void copyNote(node.path) },
+        { label: 'Rename', onSelect: () => { setActionError(null); setNaming({ mode: 'rename', from: node.path }); } },
+        { label: 'Delete', danger: true, confirmLabel: 'Really delete?', onSelect: () => void doDelete(node.path) },
+      ];
+    }
+    return [
+      {
+        label: node.path ? 'New note here' : 'New note',
+        onSelect: () => { setActionError(null); setNaming({ mode: 'create', folder: node.path || undefined }); },
+      },
+    ];
   }
 
   async function openFromGraph(p: string) {
@@ -256,12 +311,12 @@ export function App() {
     }
   }
 
-  async function doDelete() {
+  async function doDelete(target = path) {
     setActionError(null);
-    if (!path) return;
+    if (!target) return;
     try {
-      await api.remove(path);
-      editor.clear();
+      await api.remove(target);
+      if (target === path) editor.clear();
       setConfirmingDelete(false);
       refreshTree();
     } catch (err) {
@@ -297,7 +352,8 @@ export function App() {
         </div>
         {naming && (
           <NameInput
-            initial={naming.mode === 'rename' ? naming.from : ''}
+            key={naming.mode === 'rename' ? `rename:${naming.from}` : `create:${naming.folder ?? ''}`}
+            initial={naming.mode === 'rename' ? naming.from : naming.folder ? `${naming.folder}/` : ''}
             onSubmit={(v) => void submitName(v)}
             onCancel={() => setNaming(null)}
           />
@@ -315,6 +371,16 @@ export function App() {
                 return next;
               });
             }}
+            onContextMenu={(node, x, y) => setTreeMenu({ node, x, y })}
+            onMoveNote={(from, to) => void moveNote(from, to)}
+          />
+        )}
+        {treeMenu && (
+          <ContextMenu
+            x={treeMenu.x}
+            y={treeMenu.y}
+            items={treeMenuItems(treeMenu.node)}
+            onClose={closeTreeMenu}
           />
         )}
       </aside>
@@ -461,6 +527,16 @@ function NameInput({
   initial: string; onSubmit(v: string): void; onCancel(): void;
 }) {
   const [value, setValue] = useState(initial);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Pre-select the note's name (not its folder or .md) so typing replaces it.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const start = initial.lastIndexOf('/') + 1;
+    const end = initial.endsWith('.md') ? initial.length - 3 : initial.length;
+    el.setSelectionRange(start, end);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <form
       className="name-input"
@@ -470,6 +546,7 @@ function NameInput({
       }}
     >
       <input
+        ref={inputRef}
         autoFocus
         value={value}
         placeholder="path/note.md"

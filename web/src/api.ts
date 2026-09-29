@@ -25,7 +25,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(url, {
       ...init,
-      headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+      // Only label requests that carry a body: Fastify rejects an empty body
+      // sent as application/json (which broke DELETE with a 400).
+      headers: {
+        ...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...(init?.headers ?? {}),
+      },
     });
   } catch (err) {
     networkErrorListener?.();
