@@ -61,3 +61,34 @@ export interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
 }
+
+export interface AiStatus {
+  /** false when the server has no GEMINI_API_KEY */
+  enabled: boolean;
+  model: string;
+  /** vault-relative path of the note whose contents personalise the assistant */
+  profileNote: string;
+  profileExists: boolean;
+}
+
+export type AiAction = 'ask' | 'ask-vault' | 'summarize' | 'tidy' | 'tasks' | 'links' | 'continue';
+
+/** Starting content for the profile note that personalises the AI assistant. */
+export const PROFILE_TEMPLATE = `# AI Profile
+
+This note is read by the AI assistant on every request. Describe yourself and
+how you like your notes kept — edit freely.
+
+## About me
+- Role / what I use these notes for:
+- Languages I write in:
+
+## How I like my notes
+- Preferred structure (headings, bullet lists, callouts…):
+- Tag conventions (e.g. #kurs/el, #todo):
+- Folder conventions:
+
+## How the assistant should answer
+- Tone and length:
+- Things to avoid:
+`;

@@ -1,6 +1,10 @@
 services:
   noteviewer:
     build: .
+    environment:
+      # optional: enables the AI panel (https://aistudio.google.com/apikey)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-}
     ports:
       - "8080:8080"
     volumes:

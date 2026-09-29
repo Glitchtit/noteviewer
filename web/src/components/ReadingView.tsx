@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TreeNode } from '@noteviewer/shared';
-import { encodePath } from '../api';
+import { enhanceRendered } from '../md/enhance';
 import { renderMarkdown } from '../md/render';
 import { resolveLink } from '../resolveLink';
 
@@ -9,8 +9,6 @@ export interface ReadingViewProps {
   tree: TreeNode | null;
   onOpenNote(path: string): void;
 }
-
-let mermaidSeq = 0;
 
 export function ReadingView({ content, tree, onOpenNote }: ReadingViewProps) {
   const [html, setHtml] = useState('');
@@ -34,30 +32,7 @@ export function ReadingView({ content, tree, onOpenNote }: ReadingViewProps) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !html) return;
-    for (const img of el.querySelectorAll<HTMLImageElement>('img.internal-embed')) {
-      const target = img.dataset['target'];
-      const resolved = target && treeRef.current ? resolveLink(treeRef.current, target) : undefined;
-      if (resolved) img.src = `/api/file/${encodePath(resolved)}`;
-    }
-    const fences = el.querySelectorAll<HTMLElement>('code.language-mermaid');
-    if (fences.length) {
-      void import('mermaid').then(async ({ default: mermaid }) => {
-        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
-        for (const code of fences) {
-          const src = code.textContent ?? '';
-          const host = code.closest('pre') ?? code;
-          try {
-            const { svg } = await mermaid.render(`mmd-${mermaidSeq++}`, src);
-            const wrap = document.createElement('div');
-            wrap.className = 'mermaid-diagram';
-            wrap.innerHTML = svg;
-            host.replaceWith(wrap);
-          } catch {
-            // leave the raw code block visible on render failure
-          }
-        }
-      });
-    }
+    void enhanceRendered(el, treeRef.current);
   }, [html]);
 
   function onClick(e: React.MouseEvent) {

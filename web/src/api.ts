@@ -1,4 +1,4 @@
-import type { GraphData, NoteResponse, SearchResult, TreeNode } from '@noteviewer/shared';
+import type { AiAction, AiStatus, GraphData, NoteResponse, SearchResult, TreeNode } from '@noteviewer/shared';
 
 export class ApiError extends Error {
   constructor(
@@ -58,4 +58,46 @@ export const api = {
     }),
   search: (q: string) => request<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`),
   graph: () => request<GraphData>('/api/graph'),
+  aiStatus: () => request<AiStatus>('/api/ai/status'),
 };
+
+export interface AiRequest {
+  action: AiAction;
+  path?: string;
+  content?: string;
+  selection?: string;
+  prompt?: string;
+  history?: { role: 'user' | 'model'; text: string }[];
+}
+
+/**
+ * POST /api/ai and feed each streamed text delta to onText. Resolves when the
+ * response ends; rejects with ApiError (message = server's error) on failure.
+ * Aborting via `signal` rejects with the fetch AbortError.
+ */
+export async function streamAi(
+  req: AiRequest,
+  onText: (delta: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(req),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const body = (await res.json().catch(() => undefined)) as { error?: string } | undefined;
+    throw new ApiError(res.status, body?.error ?? `request failed: ${res.status}`, body);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const text = decoder.decode(value, { stream: true });
+    if (text) onText(text);
+  }
+  const tail = decoder.decode();
+  if (tail) onText(tail);
+}

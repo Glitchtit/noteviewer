@@ -16,6 +16,11 @@ const app = await buildApp({
   vaultRoot,
   watch: true,
   serveWeb: existsSync(webDist) ? webDist : undefined,
+  ai: {
+    apiKey: process.env['GEMINI_API_KEY'],
+    model: process.env['GEMINI_MODEL'],
+    profileNote: process.env['AI_PROFILE_NOTE'],
+  },
 });
 
 for (const sig of ['SIGTERM', 'SIGINT'] as const) {

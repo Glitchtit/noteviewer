@@ -24,7 +24,7 @@ function relParam(params: unknown): string {
   }
 }
 
-function badNotePath(rel: string): boolean {
+export function badNotePath(rel: string): boolean {
   return rel.includes('\u0000') || rel.split('/').some(isHiddenName) || !rel.endsWith('.md');
 }
 

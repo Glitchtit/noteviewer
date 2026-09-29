@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { TreeNode } from '@noteviewer/shared';
+import { PROFILE_TEMPLATE, type AiStatus, type TreeNode } from '@noteviewer/shared';
 import { api, ApiError, onNetworkError } from './api';
+import { AiPanel, type ApplyMode } from './components/AiPanel';
 import { ConflictBar } from './components/ConflictBar';
 import { EditorPane, type EditorPaneHandle } from './components/EditorPane';
 import { collectFolderPaths, FileTree } from './components/FileTree';
@@ -11,6 +12,7 @@ import { RightPanel } from './components/RightPanel';
 import { SearchOverlay } from './components/SearchOverlay';
 import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
+import { exportPdf } from './exportPdf';
 import { isKanbanNote } from './kanban';
 import { resolveLink } from './resolveLink';
 
@@ -29,6 +31,8 @@ export function App() {
   const [overlay, setOverlay] = useState<'switcher' | 'search' | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   // Incremented on every vault event; GraphView debounces and refetches.
   const [graphVersion, setGraphVersion] = useState(0);
   const editorRef = useRef<EditorPaneHandle>(null);
@@ -83,6 +87,10 @@ export function App() {
   });
 
   useEffect(() => refreshTree(), [refreshTree]);
+  // profileExists tracks the vault, so re-check whenever the tree changes
+  useEffect(() => {
+    if (aiOpen) api.aiStatus().then(setAiStatus).catch(() => {});
+  }, [aiOpen, tree]);
   useEffect(() => setConfirmingDelete(false), [path]);
   useEffect(() => setBoardMode(true), [path]);
   // Opening any note (tree, switcher, graph node, create) leaves the graph.
@@ -105,6 +113,9 @@ export function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         setOverlay('search');
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setAiOpen((o) => !o);
       } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'g') {
         e.preventDefault();
         setGraphOpen((g) => !g);
@@ -187,6 +198,64 @@ export function App() {
     }
   }
 
+  function editorSelection(): string {
+    const view = editorRef.current?.view;
+    if (!view) return '';
+    const { from, to } = view.state.selection.main;
+    return view.state.sliceDoc(from, to);
+  }
+
+  // Apply AI output to the note. In the editor this is a normal CodeMirror
+  // transaction (undoable, flows through onChange); elsewhere (reading or
+  // board view) there's no cursor, so insert degrades to append.
+  function applyAi(mode: ApplyMode, text: string) {
+    const view = editorRef.current?.view;
+    if (view && !(kanban && boardMode) && viewMode === 'edit') {
+      const doc = view.state.doc;
+      const { from, to } = view.state.selection.main;
+      const changes =
+        mode === 'append'
+          ? { from: doc.length, insert: `${blockSeparator(doc.toString())}${text}` }
+          : mode === 'replace' && from === to
+            ? { from: 0, to: doc.length, insert: text }
+            : { from, to, insert: text };
+      view.dispatch({ changes, scrollIntoView: true });
+      view.focus();
+      return;
+    }
+    const buf = editor.getBuffer();
+    if (mode === 'replace') {
+      editor.applyLocalContent(text);
+    } else {
+      editor.applyLocalContent(`${buf}${blockSeparator(buf)}${text}`);
+    }
+  }
+
+  async function openAiProfile() {
+    if (!aiStatus) return;
+    setActionError(null);
+    try {
+      if (!aiStatus.profileExists) {
+        await api.create(aiStatus.profileNote, PROFILE_TEMPLATE);
+        refreshTree();
+      }
+      setGraphOpen(false);
+      await editor.open(aiStatus.profileNote);
+    } catch {
+      setActionError('Failed to open the AI profile note.');
+    }
+  }
+
+  async function doExportPdf() {
+    setActionError(null);
+    try {
+      await editor.saveNow();
+      await exportPdf(title, editor.getBuffer(), tree);
+    } catch {
+      setActionError('PDF export failed.');
+    }
+  }
+
   async function doDelete() {
     setActionError(null);
     if (!path) return;
@@ -261,6 +330,14 @@ export function App() {
           >
             {graphOpen ? 'Close graph' : 'Graph'}
           </button>
+          <button
+            aria-label="Toggle AI panel"
+            aria-pressed={aiOpen}
+            title="AI assistant (Ctrl+J)"
+            onClick={() => setAiOpen((o) => !o)}
+          >
+            AI
+          </button>
           {path && !graphOpen && (
             <>
               <button
@@ -277,6 +354,9 @@ export function App() {
                   {boardMode ? 'Raw' : 'Board'}
                 </button>
               )}
+              <button aria-label="Export PDF" title="Export as PDF (via the print dialog)" onClick={() => void doExportPdf()}>
+                PDF
+              </button>
               <button onClick={() => { setActionError(null); setNaming({ mode: 'rename', from: path }); }}>Rename</button>
               {confirmingDelete ? (
                 <button className="danger" onClick={() => void doDelete()}>Really delete?</button>
@@ -346,6 +426,17 @@ export function App() {
           }}
         />
       )}
+      {aiOpen && (
+        <AiPanel
+          status={aiStatus}
+          path={path}
+          getContent={editor.getBuffer}
+          getSelection={editorSelection}
+          onApply={applyAi}
+          onOpenProfile={() => void openAiProfile()}
+          onClose={() => setAiOpen(false)}
+        />
+      )}
       {overlay && (
         <SearchOverlay
           mode={overlay}
@@ -356,6 +447,12 @@ export function App() {
       )}
     </div>
   );
+}
+
+/** Newlines needed after `text` so appended content starts a new Markdown block. */
+function blockSeparator(text: string): string {
+  if (!text || text.endsWith('\n\n')) return '';
+  return text.endsWith('\n') ? '\n' : '\n\n';
 }
 
 function NameInput({
