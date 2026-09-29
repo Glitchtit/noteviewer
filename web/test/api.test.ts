@@ -67,3 +67,25 @@ describe('api client', () => {
     });
   });
 });
+
+describe('streamAi', () => {
+  it('POSTs the request and yields streamed text', async () => {
+    const { streamAi } = await import('../src/api');
+    fetchMock.mockResolvedValue(new Response('Hello world', { status: 200 }));
+    const chunks: string[] = [];
+    await streamAi({ action: 'summarize', content: 'x' }, (t) => chunks.push(t));
+    expect(chunks.join('')).toBe('Hello world');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/ai');
+    expect(JSON.parse(init.body)).toEqual({ action: 'summarize', content: 'x' });
+  });
+
+  it('rejects with the server error message', async () => {
+    const { streamAi } = await import('../src/api');
+    fetchMock.mockResolvedValue(jsonResponse(503, { error: 'AI is not configured' }));
+    await expect(streamAi({ action: 'summarize' }, () => {})).rejects.toMatchObject({
+      status: 503,
+      message: 'AI is not configured',
+    });
+  });
+});

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { VaultIndex } from './vault/indexer.js';
 import { VaultBus, createChangeHandler, startWatcher } from './vault/watcher.js';
 import { vaultRoutes } from './routes/vault-routes.js';
+import { aiRoutes, type AiOpts } from './routes/ai-routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -18,6 +19,8 @@ export interface AppOpts {
   watch?: boolean;
   /** absolute path to web/dist; when set, serves the SPA with index.html fallback */
   serveWeb?: string;
+  /** Gemini integration; AI endpoints report disabled without an apiKey */
+  ai?: AiOpts;
 }
 
 export async function buildApp(opts: AppOpts): Promise<FastifyInstance> {
@@ -34,6 +37,7 @@ export async function buildApp(opts: AppOpts): Promise<FastifyInstance> {
   app.decorate('index', index);
   app.decorate('bus', bus);
   await app.register(vaultRoutes);
+  await app.register(aiRoutes, opts.ai ?? {});
   if (opts.serveWeb) {
     const { default: fastifyStatic } = await import('@fastify/static');
     await app.register(fastifyStatic, {
