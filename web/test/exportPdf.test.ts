@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { exportPdf } from '../src/exportPdf';
+import { DEFAULT_PDF_OPTIONS, exportPdf, pageCss } from '../src/exportPdf';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -31,5 +31,29 @@ describe('exportPdf', () => {
     expect(printed!.querySelectorAll('h1')).toHaveLength(1);
     expect(printed!.querySelector('h1')!.textContent).toBe('Real Title');
     window.dispatchEvent(new Event('afterprint'));
+  });
+
+  it('applies page setup while printing and omits the title when asked', async () => {
+    let printed: HTMLElement | null = null;
+    let css = '';
+    vi.spyOn(window, 'print').mockImplementation(() => {
+      printed = document.getElementById('print-root');
+      css = document.getElementById('print-page-style')?.textContent ?? '';
+    });
+    const opts = { includeFileName: false, pageSize: 'Letter', landscape: true, margin: 'none', scale: 80 } as const;
+    await exportPdf('file-name', 'body', null, opts);
+    expect(printed!.querySelector('h1')).toBeNull();
+    expect(css).toContain('size: Letter landscape');
+    expect(css).toContain('margin: 0');
+    expect(css).toContain('zoom: 0.8');
+    window.dispatchEvent(new Event('afterprint'));
+    expect(document.getElementById('print-page-style')).toBeNull();
+  });
+});
+
+describe('pageCss', () => {
+  it('uses portrait A4 with default margins by default and clamps the scale', () => {
+    expect(pageCss(DEFAULT_PDF_OPTIONS)).toContain('size: A4; margin: 18mm 16mm;');
+    expect(pageCss({ ...DEFAULT_PDF_OPTIONS, scale: 1 })).toContain('zoom: 0.1');
   });
 });

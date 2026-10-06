@@ -5,6 +5,7 @@ import { AiPanel, type ApplyMode } from './components/AiPanel';
 import { ConflictBar } from './components/ConflictBar';
 import { ContextMenu, type ContextMenuItem } from './components/ContextMenu';
 import { EditorPane, type EditorPaneHandle } from './components/EditorPane';
+import { ExportPdfDialog } from './components/ExportPdfDialog';
 import { collectFolderPaths, FileTree } from './components/FileTree';
 import { GraphView } from './components/GraphView';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -13,12 +14,13 @@ import { RightPanel } from './components/RightPanel';
 import { SearchOverlay } from './components/SearchOverlay';
 import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
-import { exportPdf } from './exportPdf';
+import { exportPdf, type PdfOptions } from './exportPdf';
 import { isKanbanNote } from './kanban';
 import { resolveLink } from './resolveLink';
 
 type Naming = { mode: 'create'; folder?: string } | { mode: 'rename'; from: string } | null;
 type TreeMenu = { node: TreeNode; x: number; y: number } | null;
+type PdfExport = { path: string; title: string } | null;
 
 export function App() {
   const [tree, setTree] = useState<TreeNode | null>(null);
@@ -37,6 +39,8 @@ export function App() {
   const [graphOpen, setGraphOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [pdfExport, setPdfExport] = useState<PdfExport>(null);
+  const closePdfExport = useCallback(() => setPdfExport(null), []);
   // Incremented on every vault event; GraphView debounces and refetches.
   const [graphVersion, setGraphVersion] = useState(0);
   const editorRef = useRef<EditorPaneHandle>(null);
@@ -219,6 +223,7 @@ export function App() {
       return [
         { label: 'Open', onSelect: () => { setSidebarOpen(false); void openNote(node.path); } },
         { label: 'Create copy', onSelect: () => void copyNote(node.path) },
+        { label: 'Export to PDF', onSelect: () => setPdfExport({ path: node.path, title: noteTitle(node.path) }) },
         { label: 'Rename', onSelect: () => { setActionError(null); setNaming({ mode: 'rename', from: node.path }); } },
         { label: 'Delete', danger: true, confirmLabel: 'Really delete?', onSelect: () => void doDelete(node.path) },
       ];
@@ -301,11 +306,17 @@ export function App() {
     }
   }
 
-  async function doExportPdf() {
+  async function doExportPdf(target: string, opts: PdfOptions) {
+    setPdfExport(null);
     setActionError(null);
     try {
-      await editor.saveNow();
-      await exportPdf(title, editor.getBuffer(), tree);
+      if (target === path) {
+        await editor.saveNow();
+        await exportPdf(title, editor.getBuffer(), tree, opts);
+      } else {
+        const note = await api.note(target);
+        await exportPdf(note.meta.title, note.content, tree, opts);
+      }
     } catch {
       setActionError('PDF export failed.');
     }
@@ -420,7 +431,7 @@ export function App() {
                   {boardMode ? 'Raw' : 'Board'}
                 </button>
               )}
-              <button aria-label="Export PDF" title="Export as PDF (via the print dialog)" onClick={() => void doExportPdf()}>
+              <button aria-label="Export PDF" title="Export to PDF" onClick={() => setPdfExport({ path, title })}>
                 PDF
               </button>
               <button onClick={() => { setActionError(null); setNaming({ mode: 'rename', from: path }); }}>Rename</button>
@@ -503,6 +514,13 @@ export function App() {
           onClose={() => setAiOpen(false)}
         />
       )}
+      {pdfExport && (
+        <ExportPdfDialog
+          title={pdfExport.title}
+          onExport={(opts) => void doExportPdf(pdfExport.path, opts)}
+          onClose={closePdfExport}
+        />
+      )}
       {overlay && (
         <SearchOverlay
           mode={overlay}
@@ -513,6 +531,10 @@ export function App() {
       )}
     </div>
   );
+}
+
+function noteTitle(p: string): string {
+  return (p.split('/').pop() ?? p).replace(/\.md$/i, '');
 }
 
 /** Newlines needed after `text` so appended content starts a new Markdown block. */

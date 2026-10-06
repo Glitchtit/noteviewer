@@ -223,7 +223,6 @@ button.danger { color: var(--danger); }
 /* PDF export: #print-root only exists while the print dialog is up */
 #print-root { display: none; }
 @media print {
-  @page { margin: 18mm 16mm; }
   html, body, #root { height: auto; background: #fff; }
   body > *:not(#print-root) { display: none !important; }
   #print-root {
@@ -256,3 +255,18 @@ button.danger { color: var(--danger); }
 .tree-note[draggable='true'] { cursor: grab; }
 .filetree.drop-target, .filetree .drop-target { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .filetree .drop-target > .tree-folder { color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* Export to PDF dialog */
+.pdf-dialog { gap: 10px; padding: 16px 18px; max-height: none; align-self: flex-start; }
+.pdf-dialog h2 { margin: 0; font-size: 16px; }
+.pdf-dialog-note { margin: -6px 0 4px; color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
+.pdf-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; }
+.pdf-dialog input { padding: 0; border: none; background: none; }
+.pdf-row select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font: inherit; }
+.pdf-row input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent); }
+.pdf-scale { display: flex; align-items: center; gap: 8px; }
+.pdf-scale input { accent-color: var(--accent); width: 140px; }
+.pdf-scale output { min-width: 3.5em; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pdf-dialog-hint { margin: 4px 0 0; color: var(--text-muted); font-size: 12px; }
+.pdf-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.pdf-actions button:not(.primary) { border: 1px solid var(--border); }
