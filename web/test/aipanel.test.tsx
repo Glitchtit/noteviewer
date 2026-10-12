@@ -176,6 +176,32 @@ describe('AiPanel', () => {
     expect(await screen.findByText(/a-copy\.md/)).toBeTruthy();
   });
 
+  it('labels resolved changes by how they were resolved after a reload', async () => {
+    setup();
+    await sendPrompt('go');
+    const changes = [
+      { id: 'c1', op: 'edit' as const, path: 'a.md', before: 'x', afterHash: 'h', added: 1, removed: 0, undone: true, undoStatus: 'skipped' as const },
+      { id: 'c2', op: 'edit' as const, path: 'b.md', before: 'x', afterHash: 'h', added: 1, removed: 0, undone: true, undoStatus: 'copied' as const, copyPath: 'b-copy.md' },
+    ];
+    lastSource().emit({ type: 'snapshot', session: session([turn({ changes })]) });
+    expect(await screen.findByText('Kept (skipped)')).toBeTruthy();
+    expect(screen.getByText('Restored as b-copy.md')).toBeTruthy();
+    expect(screen.queryByText('Undone')).toBeNull();
+  });
+
+  it('only offers conflict options that make sense for the change', async () => {
+    setup();
+    await sendPrompt('go');
+    const changes = [{ id: 'c1', op: 'create' as const, path: 'n.md', before: null, afterHash: 'h', added: 1, removed: 0 }];
+    lastSource().emit({ type: 'snapshot', session: session([turn({ changes })]) });
+    mocked.aiUndo!.mockResolvedValueOnce({ results: [{ id: 'c1', status: 'conflict', message: 'n.md was edited after the agent created it' }] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo n.md' }));
+    expect(await screen.findByText(/was edited after/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Restore as copy' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delete anyway' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Skip' })).toBeTruthy();
+  });
+
   it('undoes everything in a turn', async () => {
     setup();
     await sendPrompt('go');

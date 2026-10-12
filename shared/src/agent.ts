@@ -65,6 +65,10 @@ export interface ChangeRecord {
   /** move: notes whose links were rewritten */
   rewritten?: string[];
   undone?: boolean;
+  /** how the record was resolved when `undone` is set */
+  undoStatus?: 'undone' | 'copied' | 'skipped';
+  /** where the old version was restored when undoStatus is 'copied' */
+  copyPath?: string;
   added: number;
   removed: number;
 }

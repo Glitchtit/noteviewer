@@ -35,6 +35,7 @@ describe('undoChanges', () => {
     await run('edit', { path: 'a.md', old_string: 'one', new_string: 'two' });
     const results = await undoChanges(ctx, records);
     expect(results).toEqual([{ id: 'c1', status: 'undone' }]);
+    expect(records[0]!.undoStatus).toBe('undone');
     expect(await read('a.md')).toBe('one');
     expect(records[0]!.undone).toBe(true);
   });
@@ -102,6 +103,7 @@ describe('undoChanges', () => {
       const { ctx, records, read } = await conflicted();
       const [r] = await undoChanges(ctx, records, ['c1'], 'copy');
       expect(r).toEqual({ id: 'c1', status: 'copied', copyPath: 'a-copy.md' });
+      expect(records[0]).toMatchObject({ undoStatus: 'copied', copyPath: 'a-copy.md' });
       expect(await read('a-copy.md')).toBe('original');
       expect(await read('a.md')).toBe('user edit');
       expect(records[0]!.undone).toBe(true);
@@ -116,6 +118,7 @@ describe('undoChanges', () => {
     it('skips when asked', async () => {
       const { ctx, records, read } = await conflicted();
       expect((await undoChanges(ctx, records, ['c1'], 'skip'))[0]!.status).toBe('skipped');
+      expect(records[0]!.undoStatus).toBe('skipped');
       expect(await read('a.md')).toBe('user edit');
       expect(records[0]!.undone).toBe(true);
     });

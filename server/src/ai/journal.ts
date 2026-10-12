@@ -121,7 +121,11 @@ export async function undoChanges(
     } catch (err) {
       result = { id: r.id, status: 'failed', message: err instanceof Error ? err.message : String(err) };
     }
-    if (result.status === 'undone' || result.status === 'copied' || result.status === 'skipped') r.undone = true;
+    if (result.status === 'undone' || result.status === 'copied' || result.status === 'skipped') {
+      r.undone = true;
+      r.undoStatus = result.status;
+      if (result.copyPath) r.copyPath = result.copyPath;
+    }
     results.push(result);
   }
   return results;

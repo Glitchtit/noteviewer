@@ -16,6 +16,21 @@ const TOOL_ICONS: Record<string, string> = {
   web_fetch: '🌐',
 };
 
+/** Conflict choices that do something for each kind of change (labels, resolution). */
+const CONFLICT_OPTIONS: Record<ChangeRecord['op'], [string, UndoResolution][]> = {
+  create: [['Delete anyway', 'overwrite'], ['Skip', 'skip']],
+  write: [['Restore as copy', 'copy'], ['Overwrite', 'overwrite'], ['Skip', 'skip']],
+  edit: [['Restore as copy', 'copy'], ['Overwrite', 'overwrite'], ['Skip', 'skip']],
+  delete: [['Restore as copy', 'copy'], ['Overwrite', 'overwrite'], ['Skip', 'skip']],
+  move: [['Move back anyway', 'overwrite'], ['Skip', 'skip']],
+};
+
+function resolvedLabel(status: string | undefined, copyPath: string | undefined): string {
+  if (status === 'copied') return `Restored as ${copyPath}`;
+  if (status === 'skipped') return 'Kept (skipped)';
+  return 'Undone';
+}
+
 const OP_ICONS: Record<ChangeRecord['op'], string> = { create: '＋', write: '📝', edit: '✏️', move: '↪️', delete: '🗑' };
 
 function fmtTokens(n: number): string {
@@ -140,7 +155,9 @@ function ChangeCard({
                 </span>
               )}
               {done ? (
-                <span className="ai-change-state">{outcome?.status === 'copied' ? `Restored as ${outcome.copyPath}` : outcome?.status === 'skipped' ? 'Skipped' : 'Undone'}</span>
+                <span className="ai-change-state">
+                  {resolvedLabel(c.undoStatus ?? outcome?.status, c.copyPath ?? outcome?.copyPath)}
+                </span>
               ) : (
                 <button aria-label={`Undo ${c.path}`} disabled={disabled || busy} onClick={() => void undo([c.id])}>
                   Undo
@@ -151,9 +168,11 @@ function ChangeCard({
               <div className="ai-conflict" role="alert">
                 <span>{outcome.message ?? 'The file changed after the agent edited it.'}</span>
                 <span className="ai-conflict-actions">
-                  <button disabled={busy} onClick={() => void undo([c.id], 'copy')}>Restore as copy</button>
-                  <button disabled={busy} onClick={() => void undo([c.id], 'overwrite')}>Overwrite</button>
-                  <button disabled={busy} onClick={() => void undo([c.id], 'skip')}>Skip</button>
+                  {CONFLICT_OPTIONS[c.op].map(([label, resolution]) => (
+                    <button key={resolution} disabled={busy} onClick={() => void undo([c.id], resolution)}>
+                      {label}
+                    </button>
+                  ))}
                 </span>
               </div>
             )}
