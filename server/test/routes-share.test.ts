@@ -154,6 +154,7 @@ describe('public listener', () => {
       ['GET', '/api/tree'],
       ['GET', '/api/note/a.md'],
       ['GET', '/api/search?q=a'],
+      ['GET', '/api/emails'],
       ['GET', '/api/events'],
       ['GET', '/api/file/a.md'],
       ['GET', '/api/shares?path=a.md'],

@@ -6,6 +6,7 @@ import { RecipientInput, type Suggestion } from '../src/components/RecipientInpu
 const SUGGESTIONS: Suggestion[] = [
   { email: 'Andreas.fagerstrom@fcg.fi', source: 'note' },
   { email: 'anna@example.com', source: 'note' },
+  { email: 'kalle@kund.fi', source: 'vault', label: 'Kalle Karlsson +1', search: 'Kalle Karlsson Kunder/Acme' },
   { email: 'boss@firma.se', source: 'recent' },
 ];
 
@@ -92,8 +93,25 @@ describe('RecipientInput suggestions', () => {
     expect(options.map((o) => o.textContent)).toEqual([
       'Andreas.fagerstrom@fcg.fiin note',
       'anna@example.comin note',
+      'kalle@kund.fiKalle Karlsson +1',
       'boss@firma.serecent',
     ]);
+  });
+
+  it("matches what's typed against the note a vault address comes from", () => {
+    render(<Harness />);
+    fireEvent.focus(input());
+    type('karlsson');
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['kalle@kund.fiKalle Karlsson +1']);
+    fireEvent.change(input(), { target: { value: 'acme' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+  });
+
+  it('offers long address books in full (the list scrolls)', () => {
+    const many: Suggestion[] = Array.from({ length: 20 }, (_, i) => ({ email: `p${i}@x.fi`, source: 'vault', label: `P${i}` }));
+    render(<RecipientInput label="To" pills={[]} draft="" suggestions={many} onChange={() => {}} />);
+    fireEvent.focus(input());
+    expect(screen.getAllByRole('option')).toHaveLength(20);
   });
 
   it('filters while typing and hides addresses already added', () => {

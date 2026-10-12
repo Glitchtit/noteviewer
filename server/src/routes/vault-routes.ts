@@ -137,6 +137,8 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/graph', async () => app.index.graph());
 
+  app.get('/api/emails', async () => app.index.addressBook());
+
   app.get('/api/file/*', async (req, reply) => {
     const rel = relParam(req.params);
     if (rel.includes('\u0000') || rel.split('/').some(isHiddenName)) return reply.code(404).send({ error: 'not found' });

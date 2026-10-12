@@ -1,13 +1,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import MiniSearch from 'minisearch';
-import type { GraphData, GraphEdge, GraphNode, NoteMeta, SearchResult } from '@noteviewer/shared';
+import { extractEmails, type AddressBookEntry, type GraphData, type GraphEdge, type GraphNode, type NoteMeta, type SearchResult } from '@noteviewer/shared';
 import { isHiddenName, readNote } from './files.js';
 import { parseNote } from './parse.js';
 
 export class VaultIndex {
   readonly root: string;
   private notes = new Map<string, NoteMeta>();
+  /** email addresses mentioned in each note */
+  private emails = new Map<string, string[]>();
   private mini: MiniSearch<{ path: string; title: string; content: string }>;
 
   constructor(root: string) {
@@ -42,6 +44,7 @@ export class VaultIndex {
     const title = parsed.title ?? path.posix.basename(rel, '.md');
     if (this.notes.has(rel)) this.mini.discard(rel);
     this.mini.add({ path: rel, title, content });
+    this.emails.set(rel, extractEmails(content));
     this.notes.set(rel, {
       path: rel,
       title,
@@ -55,6 +58,22 @@ export class VaultIndex {
 
   removeNote(rel: string): void {
     if (this.notes.delete(rel)) this.mini.discard(rel);
+    this.emails.delete(rel);
+  }
+
+  /** Every address in the vault with the notes it appears in, sorted by address. */
+  addressBook(): AddressBookEntry[] {
+    const book = new Map<string, AddressBookEntry>();
+    for (const rel of [...this.emails.keys()].sort()) {
+      const title = this.notes.get(rel)?.title ?? path.posix.basename(rel, '.md');
+      for (const email of this.emails.get(rel)!) {
+        const key = email.toLowerCase();
+        let entry = book.get(key);
+        if (!entry) book.set(key, (entry = { email, notes: [] }));
+        entry.notes.push({ path: rel, title });
+      }
+    }
+    return [...book.values()].sort((a, b) => a.email.toLowerCase().localeCompare(b.email.toLowerCase()));
   }
 
   getMeta(rel: string): NoteMeta | undefined {

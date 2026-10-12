@@ -14,6 +14,7 @@ vi.mock('../src/api', async () => {
       revokeShare: vi.fn(),
       emailStatus: vi.fn(),
       email: vi.fn(),
+      emails: vi.fn(),
     },
   };
 });
@@ -30,6 +31,7 @@ beforeEach(() => {
   vi.mocked(api.revokeShare).mockReset().mockResolvedValue({ revoked: true });
   vi.mocked(api.emailStatus).mockReset().mockResolvedValue({ configured: true, from: 'bot@example.com' });
   vi.mocked(api.email).mockReset().mockResolvedValue({ sent: true });
+  vi.mocked(api.emails).mockReset().mockResolvedValue([]);
 });
 
 describe('ShareDialog links', () => {
@@ -81,6 +83,40 @@ describe('ShareDialog email', () => {
     await screen.findByText('Sent to Andreas.fagerstrom@fcg.fi.');
     expect(JSON.parse(localStorage.getItem('noteviewer.share.recent')!)).toEqual(['Andreas.fagerstrom@fcg.fi', 'boss@firma.se']);
     expect(screen.queryAllByTestId('recipient-pill')).toEqual([]);
+  });
+
+  it('suggests addresses from the whole vault after the note, labelled with their note', async () => {
+    localStorage.setItem('noteviewer.share.recent', JSON.stringify(['boss@firma.se', 'kalle@kund.fi']));
+    vi.mocked(api.emails).mockResolvedValue([
+      { email: 'andreas.fagerstrom@FCG.fi', notes: [{ path: 'Kontakter/Andreas.md', title: 'Andreas Fagerström' }] },
+      {
+        email: 'kalle@kund.fi',
+        notes: [
+          { path: 'Kunder/Acme.md', title: 'Acme' },
+          { path: 'Möten/Vecka 3.md', title: 'Vecka 3' },
+        ],
+      },
+    ]);
+    render(<ShareDialog path="a.md" title="A" content="Andreas.fagerstrom@fcg.fi" onClose={() => {}} />);
+    await screen.findByText('from bot@example.com');
+    fireEvent.focus(screen.getByLabelText('To'));
+    await waitFor(() =>
+      expect(within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual([
+        'Andreas.fagerstrom@fcg.fiin note',
+        'kalle@kund.fiAcme +1',
+        'boss@firma.serecent',
+      ]),
+    );
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: 'vecka' } });
+    expect(within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual(['kalle@kund.fiAcme +1']);
+  });
+
+  it('still works when the address book cannot be loaded', async () => {
+    vi.mocked(api.emails).mockRejectedValue(new Error('offline'));
+    render(<ShareDialog path="a.md" title="A" content="x@y.fi" onClose={() => {}} />);
+    await screen.findByText('from bot@example.com');
+    fireEvent.focus(screen.getByLabelText('To'));
+    expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(1);
   });
 
   it('refuses to send while an address is invalid', async () => {

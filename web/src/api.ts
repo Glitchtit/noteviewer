@@ -1,4 +1,5 @@
 import type {
+  AddressBookEntry,
   AiEffort,
   AiSession,
   AiSessionSummary,
@@ -76,6 +77,7 @@ export const api = {
     }),
   search: (q: string) => request<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`),
   graph: () => request<GraphData>('/api/graph'),
+  emails: () => request<AddressBookEntry[]>('/api/emails'),
   aiStatus: () => request<AiStatus>('/api/ai/status'),
   aiSessions: () => request<AiSessionSummary[]>('/api/ai/sessions'),
   aiCreateSession: () => request<{ id: string }>('/api/ai/sessions', { method: 'POST' }),

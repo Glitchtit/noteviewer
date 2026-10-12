@@ -362,7 +362,11 @@ details.ai-tool { display: block; }
 }
 .recipient-suggestions li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 10px; cursor: pointer; font-size: 14px; }
 .recipient-suggestions li.active { background: var(--bg-active); }
-.recipient-source { color: var(--text-muted); font-size: 11px; flex-shrink: 0; align-self: center; }
+.recipient-suggestions li > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recipient-source {
+  color: var(--text-muted); font-size: 11px; align-self: center; flex-shrink: 0; max-width: 45%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .share-ok { color: #6cc070; font-size: 13px; }
 .share-footer { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
 .share-footer a { color: var(--accent); text-decoration: none; }

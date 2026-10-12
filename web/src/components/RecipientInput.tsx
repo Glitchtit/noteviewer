@@ -3,8 +3,12 @@ import { isValidEmail, parseRecipients } from '../emails';
 
 export interface Suggestion {
   email: string;
-  /** where it came from: the shared note, or addresses emailed before */
-  source: 'note' | 'recent';
+  /** where it came from: the shared note, another vault note, or addresses emailed before */
+  source: 'note' | 'vault' | 'recent';
+  /** shown beside the address (for vault addresses: the note it's in) */
+  label?: string;
+  /** extra text the typed filter also matches, e.g. note titles and paths */
+  search?: string;
 }
 
 export interface RecipientInputProps {
@@ -17,7 +21,8 @@ export interface RecipientInputProps {
   onChange(pills: string[], draft: string): void;
 }
 
-const MAX_SUGGESTIONS = 8;
+/** a cap for very large address books; the list itself scrolls */
+const MAX_SUGGESTIONS = 100;
 const SEPARATOR = /[,;\s]/;
 
 /** Gmail-style recipient field: typed addresses become removable pills, with suggestions. */
@@ -30,7 +35,11 @@ export function RecipientInput({ label, pills, draft, suggestions, onChange }: R
   const taken = new Set(pills.map((p) => p.toLowerCase()));
   const needle = draft.trim().toLowerCase();
   const matches = suggestions
-    .filter((s) => !taken.has(s.email.toLowerCase()) && (!needle || s.email.toLowerCase().includes(needle)))
+    .filter(
+      (s) =>
+        !taken.has(s.email.toLowerCase()) &&
+        (!needle || `${s.email} ${s.label ?? ''} ${s.search ?? ''}`.toLowerCase().includes(needle)),
+    )
     .slice(0, MAX_SUGGESTIONS);
   const showList = open && matches.length > 0;
 
@@ -142,7 +151,9 @@ export function RecipientInput({ label, pills, draft, suggestions, onChange }: R
               onMouseEnter={() => setActive(i)}
             >
               <span>{s.email}</span>
-              <span className="recipient-source">{s.source === 'note' ? 'in note' : 'recent'}</span>
+              <span className="recipient-source">
+                {s.source === 'note' ? 'in note' : s.source === 'recent' ? 'recent' : s.label}
+              </span>
             </li>
           ))}
         </ul>

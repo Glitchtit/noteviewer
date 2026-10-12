@@ -84,6 +84,7 @@ how you like your notes kept — edit freely.
 
 export { resolveLink } from './resolveLink.js';
 export * from './agent.js';
+export * from './emails.js';
 
 export interface Share {
   /** 128-bit random, base64url — the bearer credential in the public URL */

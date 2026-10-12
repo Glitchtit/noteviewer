@@ -1,24 +1,12 @@
 /** Email address helpers for the share dialog's recipient field. */
 
-const EMAIL_IN_TEXT = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+import { dedupeEmails, extractEmails } from '@noteviewer/shared';
+
+export { extractEmails };
+
 const VALID = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>".]{2,}$/;
 const RECENT_KEY = 'noteviewer.share.recent';
 const RECENT_MAX = 30;
-
-function dedupe(list: string[]): string[] {
-  const seen = new Set<string>();
-  return list.filter((e) => {
-    const k = e.toLowerCase();
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-}
-
-/** Addresses mentioned in a note (plain text or mailto: links), in order, first spelling kept. */
-export function extractEmails(markdown: string): string[] {
-  return dedupe(markdown.match(EMAIL_IN_TEXT) ?? []);
-}
 
 export function isValidEmail(s: string): boolean {
   return VALID.test(s);
@@ -50,7 +38,7 @@ export function recentRecipients(): string[] {
 /** Put just-used addresses at the front of the recent list. */
 export function rememberRecipients(emails: string[]): void {
   try {
-    const next = dedupe([...emails, ...recentRecipients()]).slice(0, RECENT_MAX);
+    const next = dedupeEmails([...emails, ...recentRecipients()]).slice(0, RECENT_MAX);
     localStorage.setItem(RECENT_KEY, JSON.stringify(next));
   } catch {
     // storage unavailable: no suggestions from history

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ShareWithUrl } from '@noteviewer/shared';
+import type { AddressBookEntry, ShareWithUrl } from '@noteviewer/shared';
 import { api, ApiError } from '../api';
 import { extractEmails, isValidEmail, parseRecipients, recentRecipients, rememberRecipients } from '../emails';
 import { RecipientInput, type Suggestion } from './RecipientInput';
@@ -38,17 +38,32 @@ export function ShareDialog({ path, title, content = '', onClose }: ShareDialogP
   const [mail, setMail] = useState<{ configured: boolean; from: string | null } | null>(null);
   const [pills, setPills] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
-  // addresses in the note first, then ones emailed before
+  const [addressBook, setAddressBook] = useState<AddressBookEntry[]>([]);
+  // the shared note's addresses first, then the rest of the vault, then ones emailed before
   const suggestions = useMemo<Suggestion[]>(() => {
-    const inNote = extractEmails(content);
-    const seen = new Set(inNote.map((e) => e.toLowerCase()));
-    return [
-      ...inNote.map((email) => ({ email, source: 'note' as const })),
-      ...recentRecipients()
-        .filter((e) => !seen.has(e.toLowerCase()))
-        .map((email) => ({ email, source: 'recent' as const })),
-    ];
-  }, [content]);
+    const seen = new Set<string>();
+    const fresh = (email: string) => {
+      const k = email.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    };
+    const out: Suggestion[] = extractEmails(content)
+      .filter(fresh)
+      .map((email) => ({ email, source: 'note' }));
+    for (const entry of addressBook) {
+      if (!fresh(entry.email)) continue;
+      const [first, ...more] = entry.notes;
+      out.push({
+        email: entry.email,
+        source: 'vault',
+        label: `${first?.title ?? ''}${more.length ? ` +${more.length}` : ''}`,
+        search: entry.notes.map((n) => `${n.title} ${n.path}`).join(' '),
+      });
+    }
+    for (const email of recentRecipients()) if (fresh(email)) out.push({ email, source: 'recent' });
+    return out;
+  }, [content, addressBook]);
   const [subject, setSubject] = useState(title);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -57,6 +72,8 @@ export function ShareDialog({ path, title, content = '', onClose }: ShareDialogP
   useEffect(() => {
     api.shares(path).then(setShares, () => setLinkError('Could not load existing links.'));
     api.emailStatus().then(setMail, () => setMail({ configured: false, from: null }));
+    // suggestions only: without the address book the field still works
+    api.emails().then(setAddressBook, () => {});
   }, [path]);
 
   useEffect(() => {
