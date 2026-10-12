@@ -62,21 +62,10 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
-export interface AiStatus {
-  /** false when the server has no GEMINI_API_KEY */
-  enabled: boolean;
-  model: string;
-  /** vault-relative path of the note whose contents personalise the assistant */
-  profileNote: string;
-  profileExists: boolean;
-}
-
-export type AiAction = 'ask' | 'ask-vault' | 'summarize' | 'tidy' | 'tasks' | 'links' | 'continue';
-
 /** Starting content for the profile note that personalises the AI assistant. */
 export const PROFILE_TEMPLATE = `# AI Profile
 
-This note is read by the AI assistant on every request. Describe yourself and
+This note is loaded into every new AI agent session. Describe yourself and
 how you like your notes kept — edit freely.
 
 ## About me
@@ -94,6 +83,7 @@ how you like your notes kept — edit freely.
 `;
 
 export { resolveLink } from './resolveLink.js';
+export * from './agent.js';
 
 export interface Share {
   /** 128-bit random, base64url — the bearer credential in the public URL */
