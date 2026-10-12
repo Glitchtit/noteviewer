@@ -29,7 +29,7 @@ export interface AppOpts {
   watch?: boolean;
   /** absolute path to web/dist; when set, serves the SPA with index.html fallback */
   serveWeb?: string;
-  /** Gemini integration; AI endpoints report disabled without an apiKey */
+  /** Claude agent; runs answer 503 without an apiKey */
   ai?: AiOpts;
   /** defaults to an in-memory store */
   shares?: ShareStore;

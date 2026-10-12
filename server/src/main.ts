@@ -29,9 +29,13 @@ const app = await buildApp({
   pdf: createPdfRenderer(`http://127.0.0.1:${port}`),
   publicBaseUrl: process.env['PUBLIC_SHARE_URL'],
   ai: {
-    apiKey: process.env['GEMINI_API_KEY'],
-    model: process.env['GEMINI_MODEL'],
+    apiKey: process.env['ANTHROPIC_API_KEY'],
+    model: process.env['AI_MODEL'],
+    effort: process.env['AI_EFFORT'],
+    maxRounds: process.env['AI_MAX_ROUNDS'] ? Number(process.env['AI_MAX_ROUNDS']) : undefined,
+    fallbacks: process.env['AI_FALLBACKS'] !== 'off',
     profileNote: process.env['AI_PROFILE_NOTE'],
+    dataDir,
   },
 });
 const publicApp =

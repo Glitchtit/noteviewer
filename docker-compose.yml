@@ -2,9 +2,14 @@ services:
   noteviewer:
     build: .
     environment:
-      # optional: enables the AI panel (https://aistudio.google.com/apikey)
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-}
+      # optional: enables the Claude agent panel (https://console.anthropic.com/settings/keys)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # optional agent tuning: model id, effort (low|medium|high|xhigh|max), max model requests per run,
+      # and AI_FALLBACKS=off to disable the server-side refusal fallback
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_EFFORT=${AI_EFFORT:-}
+      - AI_MAX_ROUNDS=${AI_MAX_ROUNDS:-}
+      - AI_FALLBACKS=${AI_FALLBACKS:-}
       # optional: public origin of the share listener (port 8081), e.g. https://share.example.com
       - PUBLIC_SHARE_URL=${PUBLIC_SHARE_URL:-}
       # optional: enables "Email as PDF" (Cloudflare Email Service: smtp.mx.cloudflare.net, 465, user api_token)
