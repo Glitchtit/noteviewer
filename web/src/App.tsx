@@ -503,7 +503,7 @@ export function App() {
         />
       )}
       {sharing && path && (
-        <ShareDialog key={path} path={path} title={title} onClose={() => setSharing(false)} />
+        <ShareDialog key={path} path={path} title={title} content={editor.getBuffer()} onClose={() => setSharing(false)} />
       )}
       {overlay && (
         <SearchOverlay

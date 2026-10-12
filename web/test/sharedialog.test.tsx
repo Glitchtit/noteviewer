@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShareDialog } from '../src/components/ShareDialog';
 import { api, ApiError } from '../src/api';
@@ -24,6 +24,7 @@ const existing = {
 };
 
 beforeEach(() => {
+  localStorage.clear();
   vi.mocked(api.shares).mockReset().mockResolvedValue([existing]);
   vi.mocked(api.createShare).mockReset();
   vi.mocked(api.revokeShare).mockReset().mockResolvedValue({ revoked: true });
@@ -64,6 +65,49 @@ describe('ShareDialog email', () => {
     expect(api.email).toHaveBeenCalledWith({
       path: 'a.md', to: ['x@example.com', 'y@example.com'], subject: 'Agenda', message: 'Hej',
     });
+  });
+
+  it('suggests addresses from the note and from earlier sends', async () => {
+    localStorage.setItem('noteviewer.share.recent', JSON.stringify(['boss@firma.se']));
+    render(<ShareDialog path="a.md" title="A" content={'**E-post:** Andreas.fagerstrom@fcg.fi'} onClose={() => {}} />);
+    await screen.findByText('from bot@example.com');
+    fireEvent.focus(screen.getByLabelText('To'));
+    expect(within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Andreas.fagerstrom@fcg.fiin note',
+      'boss@firma.serecent',
+    ]);
+    fireEvent.mouseDown(screen.getByRole('option', { name: /fcg\.fi/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send PDF' }));
+    await screen.findByText('Sent to Andreas.fagerstrom@fcg.fi.');
+    expect(JSON.parse(localStorage.getItem('noteviewer.share.recent')!)).toEqual(['Andreas.fagerstrom@fcg.fi', 'boss@firma.se']);
+    expect(screen.queryAllByTestId('recipient-pill')).toEqual([]);
+  });
+
+  it('refuses to send while an address is invalid', async () => {
+    render(<ShareDialog path="a.md" title="A" onClose={() => {}} />);
+    await screen.findByText('from bot@example.com');
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: 'andreas@fcg, ok@x.fi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send PDF' }));
+    expect(await screen.findByText(/andreas@fcg is not a valid address/)).toBeTruthy();
+    expect(api.email).not.toHaveBeenCalled();
+  });
+
+  it('asks for a recipient instead of sending to nobody', async () => {
+    render(<ShareDialog path="a.md" title="A" onClose={() => {}} />);
+    await screen.findByText('from bot@example.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Send PDF' }));
+    expect(await screen.findByText('Add at least one recipient.')).toBeTruthy();
+    expect(api.email).not.toHaveBeenCalled();
+  });
+
+  it('closes the suggestion list on Escape without closing the dialog', async () => {
+    const onClose = vi.fn();
+    render(<ShareDialog path="a.md" title="A" content="a@x.fi" onClose={onClose} />);
+    await screen.findByText('from bot@example.com');
+    fireEvent.focus(screen.getByLabelText('To'));
+    fireEvent.keyDown(screen.getByLabelText('To'), { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('shows the server error when sending fails', async () => {

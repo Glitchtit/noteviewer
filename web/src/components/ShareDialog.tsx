@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ShareWithUrl } from '@noteviewer/shared';
 import { api, ApiError } from '../api';
+import { extractEmails, isValidEmail, parseRecipients, recentRecipients, rememberRecipients } from '../emails';
+import { RecipientInput, type Suggestion } from './RecipientInput';
 
 export interface ShareDialogProps {
   path: string;
   title: string;
+  /** the note's text, scanned for email addresses to suggest */
+  content?: string;
   onClose(): void;
 }
 
@@ -26,13 +30,25 @@ function errorText(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export function ShareDialog({ path, title, onClose }: ShareDialogProps) {
+export function ShareDialog({ path, title, content = '', onClose }: ShareDialogProps) {
   const [shares, setShares] = useState<ShareWithUrl[]>([]);
   const [expiry, setExpiry] = useState(0);
   const [copied, setCopied] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [mail, setMail] = useState<{ configured: boolean; from: string | null } | null>(null);
-  const [to, setTo] = useState('');
+  const [pills, setPills] = useState<string[]>([]);
+  const [draft, setDraft] = useState('');
+  // addresses in the note first, then ones emailed before
+  const suggestions = useMemo<Suggestion[]>(() => {
+    const inNote = extractEmails(content);
+    const seen = new Set(inNote.map((e) => e.toLowerCase()));
+    return [
+      ...inNote.map((email) => ({ email, source: 'note' as const })),
+      ...recentRecipients()
+        .filter((e) => !seen.has(e.toLowerCase()))
+        .map((email) => ({ email, source: 'recent' as const })),
+    ];
+  }, [content]);
   const [subject, setSubject] = useState(title);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -81,14 +97,29 @@ export function ShareDialog({ path, title, onClose }: ShareDialogProps) {
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
-    const recipients = to.split(/[,;\s]+/).filter(Boolean);
-    if (!recipients.length) return;
+    // whatever is still typed counts too
+    const recipients = [...pills];
+    for (const r of parseRecipients(draft)) {
+      if (!recipients.some((p) => p.toLowerCase() === r.toLowerCase())) recipients.push(r);
+    }
+    setPills(recipients);
+    setDraft('');
+    const invalid = recipients.filter((r) => !isValidEmail(r));
+    if (invalid.length) {
+      setMailResult({ ok: false, text: `${invalid.join(', ')} ${invalid.length === 1 ? 'is not a valid address' : 'are not valid addresses'}.` });
+      return;
+    }
+    if (!recipients.length) {
+      setMailResult({ ok: false, text: 'Add at least one recipient.' });
+      return;
+    }
     setSending(true);
     setMailResult(null);
     try {
       await api.email({ path, to: recipients, subject, message });
+      rememberRecipients(recipients);
       setMailResult({ ok: true, text: `Sent to ${recipients.join(', ')}.` });
-      setTo('');
+      setPills([]);
     } catch (err) {
       setMailResult({ ok: false, text: errorText(err, 'Sending failed') });
     } finally {
@@ -137,12 +168,15 @@ export function ShareDialog({ path, title, onClose }: ShareDialogProps) {
             </p>
           ) : (
             <form className="share-form" onSubmit={(e) => void send(e)}>
-              <input
-                aria-label="To"
-                placeholder="To: name@example.com, other@example.com"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                required
+              <RecipientInput
+                label="To"
+                pills={pills}
+                draft={draft}
+                suggestions={suggestions}
+                onChange={(p, d) => {
+                  setPills(p);
+                  setDraft(d);
+                }}
               />
               <input aria-label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} required />
               <textarea

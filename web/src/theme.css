@@ -340,6 +340,29 @@ details.ai-tool { display: block; }
 .share-dialog button.primary { border-color: var(--accent); }
 .share-dialog button:disabled { opacity: 0.6; cursor: default; }
 .share-error { color: var(--danger); font-size: 13px; margin-top: 6px; }
+.recipients {
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; cursor: text;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; min-height: 34px;
+}
+.recipients:focus-within { border-color: var(--accent); }
+.share-dialog .recipients input { flex: 1; min-width: 160px; border: none; background: none; padding: 2px; }
+.share-dialog .recipients input:focus { border: none; }
+.recipient-pill {
+  display: inline-flex; align-items: center; gap: 2px; max-width: 100%;
+  background: var(--bg-active); color: var(--text); border-radius: 12px; padding: 1px 4px 1px 10px; font-size: 13px;
+}
+.recipient-pill > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-dialog .recipient-pill button { border: none; padding: 0 5px; font-size: 11px; color: var(--text-muted); border-radius: 10px; }
+.share-dialog .recipient-pill button:hover { color: var(--text); background: var(--bg-hover); }
+.recipient-pill.invalid { background: #3a1e1e; color: #f0b0b0; outline: 1px solid var(--danger); }
+.recipient-suggestions {
+  position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px 0; list-style: none;
+  background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  max-height: 240px; overflow-y: auto;
+}
+.recipient-suggestions li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 10px; cursor: pointer; font-size: 14px; }
+.recipient-suggestions li.active { background: var(--bg-active); }
+.recipient-source { color: var(--text-muted); font-size: 11px; flex-shrink: 0; align-self: center; }
 .share-ok { color: #6cc070; font-size: 13px; }
 .share-footer { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
 .share-footer a { color: var(--accent); text-decoration: none; }
