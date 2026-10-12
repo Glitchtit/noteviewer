@@ -5,7 +5,17 @@ services:
       # optional: enables the AI panel (https://aistudio.google.com/apikey)
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-}
+      # optional: public origin of the share listener (port 8081), e.g. https://share.example.com
+      - PUBLIC_SHARE_URL=${PUBLIC_SHARE_URL:-}
+      # optional: enables "Email as PDF" (Cloudflare Email Service: smtp.mx.cloudflare.net, 465, user api_token)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - MAIL_FROM=${MAIL_FROM:-}
     ports:
-      - "8080:8080"
+      - "8080:8080" # private app — put behind an auth proxy (Cloudflare Access)
+      - "8081:8081" # public share links only
     volumes:
       - "${VAULT_PATH:?set VAULT_PATH to your vault folder}:/vault"
+      - "./data:/data"

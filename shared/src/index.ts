@@ -92,3 +92,24 @@ how you like your notes kept — edit freely.
 - Tone and length:
 - Things to avoid:
 `;
+
+export { resolveLink } from './resolveLink.js';
+
+export interface Share {
+  /** 128-bit random, base64url — the bearer credential in the public URL */
+  token: string;
+  /** vault-relative note path */
+  path: string;
+  createdAt: string;
+  /** ISO timestamp, or null for a link that never expires */
+  expiresAt: string | null;
+}
+
+export interface ShareWithUrl extends Share {
+  url: string;
+}
+
+export interface PublicNote {
+  title: string;
+  content: string;
+}

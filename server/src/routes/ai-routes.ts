@@ -4,7 +4,7 @@ import type { AiStatus } from '@noteviewer/shared';
 import { readNote } from '../vault/files.js';
 import { streamGemini, GeminiError } from '../ai/gemini.js';
 import { AI_ACTIONS, buildContents, buildSystemPrompt, type AiAction, type ChatTurn } from '../ai/skill.js';
-import { badNotePath } from './vault-routes.js';
+import { badNotePath } from './params.js';
 
 export interface AiOpts {
   /** Gemini API key; AI endpoints answer 503 when unset */

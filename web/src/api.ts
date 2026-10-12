@@ -1,4 +1,13 @@
-import type { AiAction, AiStatus, GraphData, NoteResponse, SearchResult, TreeNode } from '@noteviewer/shared';
+import type {
+  AiAction,
+  AiStatus,
+  GraphData,
+  NoteResponse,
+  PublicNote,
+  SearchResult,
+  ShareWithUrl,
+  TreeNode,
+} from '@noteviewer/shared';
 
 export class ApiError extends Error {
   constructor(
@@ -64,6 +73,19 @@ export const api = {
   search: (q: string) => request<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`),
   graph: () => request<GraphData>('/api/graph'),
   aiStatus: () => request<AiStatus>('/api/ai/status'),
+  shares: (path: string) => request<ShareWithUrl[]>(`/api/shares?path=${encodeURIComponent(path)}`),
+  createShare: (path: string, expiresInDays: number | null) =>
+    request<ShareWithUrl>('/api/shares', {
+      method: 'POST',
+      body: JSON.stringify({ path, expiresInDays }),
+    }),
+  revokeShare: (token: string) =>
+    request<{ revoked: boolean }>(`/api/shares/${encodeURIComponent(token)}`, { method: 'DELETE' }),
+  emailStatus: () => request<{ configured: boolean; from: string | null }>('/api/email/status'),
+  email: (body: { path: string; to: string[]; subject: string; message: string }) =>
+    request<{ sent: boolean }>('/api/email', { method: 'POST', body: JSON.stringify(body) }),
+  publicNote: (token: string) => request<PublicNote>(`/api/public/${encodeURIComponent(token)}`),
+  pdfUrl: (path: string) => `/api/pdf/${encodePath(path)}`,
 };
 
 export interface AiRequest {

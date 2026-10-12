@@ -122,3 +122,39 @@ test('context menu creates a copy and deletes a note', async ({ page, request })
   await expect(page.getByRole('button', { name: 'Scratch', exact: true })).toHaveCount(0);
   expect(existsSync(`${VAULT}/Scratch.md`)).toBe(false);
 });
+
+test('share: public link works on the public port only, then revokes', async ({ page, browser }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Rich' }).click();
+  await page.getByRole('button', { name: 'Share' }).click();
+  await page.getByRole('button', { name: 'Create link' }).click();
+  const link = page.getByTestId('share-link').locator('input');
+  await expect(link).toHaveValue(/\/s\/[A-Za-z0-9_-]{22}$/);
+  const token = (await link.inputValue()).split('/s/')[1]!;
+
+  const visitor = await browser.newPage();
+  await visitor.goto(`http://127.0.0.1:8126/s/${token}`);
+  await expect(visitor.getByTestId('note-title')).toHaveText('Rich');
+  await expect(visitor.locator('.reading-view')).toContainText('Some bold text');
+  await expect(visitor.locator('.reading-view .katex')).toBeVisible();
+  // wikilinks are inert and the private API is absent on the public port
+  await visitor.locator('a.internal-link', { hasText: 'Welcome' }).click();
+  await expect(visitor.getByTestId('note-title')).toHaveText('Rich');
+  expect((await visitor.request.get('http://127.0.0.1:8126/api/tree')).status()).toBe(404);
+  expect((await visitor.request.get('http://127.0.0.1:8126/')).status()).toBe(404);
+
+  await page.getByRole('button', { name: 'Revoke' }).click();
+  await expect(page.getByTestId('share-link')).toHaveCount(0);
+  await visitor.reload();
+  await expect(visitor.getByTestId('share-missing')).toBeVisible();
+  await visitor.close();
+});
+
+test('share: PDF renders through headless Chromium', async ({ request }) => {
+  const res = await request.get('/api/pdf/Rich.md', { timeout: 30_000 });
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toBe('application/pdf');
+  const body = await res.body();
+  expect(body.subarray(0, 5).toString()).toBe('%PDF-');
+  expect(body.length).toBeGreaterThan(5_000);
+});

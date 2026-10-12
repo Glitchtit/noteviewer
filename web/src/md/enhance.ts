@@ -4,6 +4,9 @@ import { resolveLink } from '../resolveLink';
 
 let mermaidSeq = 0;
 
+/** Maps an `![[embed]]` target to a URL; the default resolves it against the vault tree. */
+export type EmbedUrl = (target: string) => string | undefined;
+
 /**
  * Post-render enhancement of renderMarkdown() output already in the DOM:
  * points ![[embeds]] at /api/file and swaps ```mermaid fences for diagrams.
@@ -13,11 +16,19 @@ export async function enhanceRendered(
   el: HTMLElement,
   tree: TreeNode | null,
   mermaidTheme: 'dark' | 'default' = 'dark',
+  embedUrl?: EmbedUrl,
 ): Promise<void> {
   for (const img of el.querySelectorAll<HTMLImageElement>('img.internal-embed')) {
     const target = img.dataset['target'];
-    const resolved = target && tree ? resolveLink(tree, target) : undefined;
-    if (resolved) img.src = `/api/file/${encodePath(resolved)}`;
+    if (!target) continue;
+    let src: string | undefined;
+    if (embedUrl) {
+      src = embedUrl(target);
+    } else {
+      const resolved = tree ? resolveLink(tree, target) : undefined;
+      if (resolved) src = `/api/file/${encodePath(resolved)}`;
+    }
+    if (src) img.src = src;
   }
   const fences = el.querySelectorAll<HTMLElement>('code.language-mermaid');
   if (!fences.length) return;

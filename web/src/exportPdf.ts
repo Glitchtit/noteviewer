@@ -1,5 +1,5 @@
 import type { TreeNode } from '@noteviewer/shared';
-import { enhanceRendered } from './md/enhance';
+import { enhanceRendered, type EmbedUrl } from './md/enhance';
 import { renderMarkdown } from './md/render';
 
 const IMAGE_TIMEOUT_MS = 5000;
@@ -55,16 +55,19 @@ function imagesLoaded(el: HTMLElement): Promise<unknown> {
 }
 
 /**
- * Render a note into a print-only document (light theme, see `@media print`
- * in theme.css) and open the browser's print dialog, where "Save as PDF"
- * produces the file. The document title becomes the suggested file name.
+ * Render a note into the print-only `#print-root` document (light theme, see
+ * `@media print` in theme.css) with its `@page` rule, and resolve once
+ * diagrams and images have settled. Returns a function that removes it.
+ * The server's headless Chromium prints this too (`/print`), so emailed PDFs
+ * match what Export to PDF produces.
  */
-export async function exportPdf(
+export async function buildPrintDocument(
   title: string,
   content: string,
   tree: TreeNode | null,
   opts: PdfOptions = DEFAULT_PDF_OPTIONS,
-): Promise<void> {
+  embedUrl?: EmbedUrl,
+): Promise<() => void> {
   document.getElementById('print-root')?.remove();
   document.getElementById('print-page-style')?.remove();
   const root = document.createElement('div');
@@ -79,15 +82,31 @@ export async function exportPdf(
   style.textContent = pageCss(opts);
   document.head.appendChild(style);
   document.body.appendChild(root);
-  await enhanceRendered(root, tree, 'default');
+  await enhanceRendered(root, tree, 'default', embedUrl);
   await imagesLoaded(root);
+  return () => {
+    root.remove();
+    style.remove();
+  };
+}
 
+/**
+ * Build the print document and open the browser's print dialog, where "Save
+ * as PDF" produces the file. The document title becomes the suggested file name.
+ */
+export async function exportPdf(
+  title: string,
+  content: string,
+  tree: TreeNode | null,
+  opts: PdfOptions = DEFAULT_PDF_OPTIONS,
+  embedUrl?: EmbedUrl,
+): Promise<void> {
+  const remove = await buildPrintDocument(title, content, tree, opts, embedUrl);
   const prevTitle = document.title;
   document.title = title;
   const cleanup = () => {
     document.title = prevTitle;
-    root.remove();
-    style.remove();
+    remove();
   };
   window.addEventListener('afterprint', cleanup, { once: true });
   window.print();

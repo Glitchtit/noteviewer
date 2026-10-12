@@ -6,7 +6,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   use: { baseURL: 'http://127.0.0.1:8125' },
   webServer: {
-    command: 'node e2e/prepare-vault.mjs && VAULT_PATH=e2e/.vault PORT=8125 npx tsx server/src/main.ts',
+    command:
+      'node e2e/prepare-vault.mjs && VAULT_PATH=e2e/.vault DATA_PATH=e2e/.data PORT=8125 PUBLIC_PORT=8126 npx tsx server/src/main.ts',
     url: 'http://127.0.0.1:8125/api/tree',
     reuseExistingServer: false,
     timeout: 30_000,

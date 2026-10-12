@@ -4,3 +4,5 @@ dist/
 e2e/.vault/
 test-results/
 playwright-report/
+data/
+e2e/.data/

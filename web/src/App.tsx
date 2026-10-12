@@ -12,6 +12,7 @@ import { KanbanBoard } from './components/KanbanBoard';
 import { ReadingView } from './components/ReadingView';
 import { RightPanel } from './components/RightPanel';
 import { SearchOverlay } from './components/SearchOverlay';
+import { ShareDialog } from './components/ShareDialog';
 import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
 import { exportPdf, type PdfOptions } from './exportPdf';
@@ -43,6 +44,7 @@ export function App() {
   const closePdfExport = useCallback(() => setPdfExport(null), []);
   // Incremented on every vault event; GraphView debounces and refetches.
   const [graphVersion, setGraphVersion] = useState(0);
+  const [sharing, setSharing] = useState(false);
   const editorRef = useRef<EditorPaneHandle>(null);
   const editor = useNoteEditor();
   const { path, title, revision, dirty, saving, conflict } = editor.state;
@@ -426,6 +428,8 @@ export function App() {
               <button aria-label="Toggle right panel" onClick={() => setPanelOpen((o) => !o)}>
                 Panel
               </button>
+              {/* save first: the PDF and public link read the file on disk */}
+              <button onClick={() => { void editor.saveNow(); setSharing(true); }}>Share</button>
               {kanban && (
                 <button aria-label="Toggle board view" onClick={() => setBoardMode((b) => !b)}>
                   {boardMode ? 'Raw' : 'Board'}
@@ -520,6 +524,9 @@ export function App() {
           onExport={(opts) => void doExportPdf(pdfExport.path, opts)}
           onClose={closePdfExport}
         />
+      )}
+      {sharing && path && (
+        <ShareDialog key={path} path={path} title={title} onClose={() => setSharing(false)} />
       )}
       {overlay && (
         <SearchOverlay

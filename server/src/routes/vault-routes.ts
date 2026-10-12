@@ -13,20 +13,7 @@ import {
 import { resolveVaultPath, PathError } from '../vault/paths.js';
 import { rewriteLinks } from '../vault/rename.js';
 import path from 'node:path';
-
-function relParam(params: unknown): string {
-  const raw = (params as Record<string, string>)['*'] ?? '';
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    // Defense-in-depth: Fastify pre-decodes paths; this catches double-encoded sequences like `foo%25ZZ.md`
-    return '\u0000invalid';
-  }
-}
-
-export function badNotePath(rel: string): boolean {
-  return rel.includes('\u0000') || rel.split('/').some(isHiddenName) || !rel.endsWith('.md');
-}
+import { badNotePath, relParam } from './params.js';
 
 export async function vaultRoutes(app: FastifyInstance): Promise<void> {
   await app.register(fastifyStatic, { root: app.vaultRoot, serve: false });
@@ -138,6 +125,7 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
     try {
       const trashedTo = await trashNote(app.vaultRoot, rel);
       app.index.removeNote(rel);
+      await app.shares.removePath(rel);
       app.bus.emitEvent({ type: 'tree-changed' });
       return { trashedTo };
     } catch (err) {
@@ -208,6 +196,7 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
         }
         app.index.removeNote(from);
         await app.index.updateNote(to);
+        await app.shares.renamePath(from, to);
         app.bus.emitEvent({ type: 'tree-changed' });
         for (const ref of rewritten) app.bus.emitEvent({ type: 'note-changed', path: ref });
         return { rewritten };
