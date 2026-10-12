@@ -53,7 +53,18 @@ const WEB_TOOLS: BetaToolUnion[] = [
 
 const MAX_PARSE_RETRIES = 2;
 
+/** Models that accept `fallbacks: "default"`; others (Haiku, unknown ids) would 400. */
+const FALLBACK_MODELS = new Set([
+  'claude-fable-5-1',
+  'claude-fable-5',
+  'claude-mythos-5-1',
+  'claude-opus-5-5',
+  'claude-opus-5',
+  'claude-sonnet-5-5',
+]);
+
 export function buildParams(config: AgentConfig, system: string, messages: BetaMessageParam[]): object {
+  const fallbacks = config.fallbacks && FALLBACK_MODELS.has(config.model);
   return {
     model: config.model,
     max_tokens: 64000,
@@ -64,8 +75,8 @@ export function buildParams(config: AgentConfig, system: string, messages: BetaM
     output_config: { effort: config.effort },
     cache_control: { type: 'ephemeral' },
     context_management: { edits: [{ type: 'compact_20260112' }] },
-    betas: ['compact-2026-01-12', ...(config.fallbacks ? ['server-side-fallback-2026-07-01'] : [])],
-    ...(config.fallbacks ? { fallbacks: 'default' } : {}),
+    betas: ['compact-2026-01-12', ...(fallbacks ? ['server-side-fallback-2026-07-01'] : [])],
+    ...(fallbacks ? { fallbacks: 'default' } : {}),
   };
 }
 

@@ -64,6 +64,15 @@ describe('buildParams', () => {
     expect(p.tools.at(-2)).toMatchObject({ type: 'web_search_20260209', max_uses: 8 });
   });
 
+  it('omits fallbacks for models without a server-side fallback', () => {
+    for (const model of ['claude-haiku-5-5', 'some-future-model']) {
+      const p = buildParams({ ...config, model }, 'SYS', []) as Record<string, any>;
+      expect(p.fallbacks).toBeUndefined();
+      expect(p.betas).toEqual(['compact-2026-01-12']);
+    }
+    expect((buildParams({ ...config, model: 'claude-sonnet-5-5' }, 'SYS', []) as Record<string, any>).fallbacks).toBe('default');
+  });
+
   it('omits fallbacks when disabled', () => {
     const p = buildParams({ ...config, fallbacks: false }, 'SYS', []) as Record<string, any>;
     expect(p.fallbacks).toBeUndefined();
