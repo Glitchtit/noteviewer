@@ -6,3 +6,4 @@ test-results/
 playwright-report/
 data/
 e2e/.data/
+.superpowers/
