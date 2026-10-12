@@ -1,128 +1,94 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AiAction, AiStatus } from '@noteviewer/shared';
-import { ApiError, streamAi, type AiRequest } from '../api';
-import { renderMarkdown } from '../md/render';
-
-export type ApplyMode = 'insert' | 'append' | 'replace';
+import { QUICK_PROMPTS, type AiStatus } from '@noteviewer/shared';
+import { TurnView } from './ai/TurnView';
+import { useAgentSession } from './ai/useAgentSession';
 
 export interface AiPanelProps {
   status: AiStatus | null;
   /** open note path, or null when none is open */
   path: string | null;
-  /** live note buffer */
-  getContent(): string;
   /** current editor selection ('' when none or not in edit mode) */
   getSelection(): string;
-  onApply(mode: ApplyMode, text: string): void;
+  /** flush unsaved edits so the agent reads what the user sees */
+  saveNow(): Promise<void>;
+  /** open a note by [[link]] target or vault path */
+  onOpenNote(target: string): void;
   onOpenProfile(): void;
   onClose(): void;
 }
 
-interface Entry {
-  id: number;
-  action: AiAction;
-  /** what the user sees as their request */
-  label: string;
-  /** free-form question, for chat history */
-  prompt?: string;
-  usedSelection: boolean;
-  output: string;
-  streaming: boolean;
-  error?: string;
-}
-
-const QUICK_ACTIONS: { action: AiAction; label: string; title: string }[] = [
-  { action: 'summarize', label: 'Summarize', title: 'TL;DR and key points' },
-  { action: 'tidy', label: 'Tidy up', title: 'Restructure and fix language, keeping all content' },
-  { action: 'tasks', label: 'Action items', title: 'Extract to-dos as a task list' },
-  { action: 'links', label: 'Tags & links', title: 'Suggest tags and [[links]] to existing notes' },
-  { action: 'continue', label: 'Continue', title: 'Keep writing in the same style' },
-];
-
-let entrySeq = 0;
-
-export function AiPanel({ status, path, getContent, getSelection, onApply, onOpenProfile, onClose }: AiPanelProps) {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [question, setQuestion] = useState('');
-  const [scope, setScope] = useState<'note' | 'vault'>('note');
-  const abortRef = useRef<AbortController | null>(null);
+export function AiPanel({ status, path, getSelection, saveNow, onOpenNote, onOpenProfile, onClose }: AiPanelProps) {
+  const enabled = Boolean(status?.enabled);
+  const agent = useAgentSession(enabled);
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
-  const busy = entries.some((e) => e.streaming);
-  // without an open note, questions can only go to the vault
-  const effectiveScope = path ? scope : 'vault';
+  const busy = sending || Boolean(agent.session?.running);
+  const turns = agent.session?.turns ?? [];
 
-  // A conversation belongs to one note; switching notes starts fresh.
-  useEffect(() => {
-    abortRef.current?.abort();
-    setEntries([]);
-  }, [path]);
-
-  useEffect(() => () => abortRef.current?.abort(), []);
-
+  // follow the conversation while it streams, unless the user scrolled up
+  const stickRef = useRef(true);
   useEffect(() => {
     const el = logRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [entries]);
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [agent.session]);
 
-  function patch(id: number, fn: (e: Entry) => Partial<Entry>) {
-    setEntries((es) => es.map((e) => (e.id === id ? { ...e, ...fn(e) } : e)));
-  }
-
-  async function run(action: AiAction, label: string, prompt?: string) {
-    if (busy) return;
-    const selection = path ? getSelection() : '';
-    const id = ++entrySeq;
-    const req: AiRequest = { action, prompt };
-    if (path) {
-      req.path = path;
-      req.content = getContent();
-      if (selection) req.selection = selection;
-    }
-    if (action === 'ask' || action === 'ask-vault') {
-      req.history = entries
-        .filter((e) => (e.action === 'ask' || e.action === 'ask-vault') && !e.error && e.output)
-        .flatMap((e) => [
-          { role: 'user' as const, text: e.prompt ?? e.label },
-          { role: 'model' as const, text: e.output },
-        ]);
-    }
-    setEntries((es) => [...es, { id, action, label, prompt, usedSelection: Boolean(selection), output: '', streaming: true }]);
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
+  async function send(prompt: string) {
+    const text = prompt.trim();
+    if (!text || busy) return;
+    setSending(true);
     try {
-      await streamAi(req, (delta) => patch(id, (e) => ({ output: e.output + delta })), ctrl.signal);
-      patch(id, () => ({ streaming: false }));
-    } catch (err) {
-      const aborted = ctrl.signal.aborted;
-      patch(id, () => ({
-        streaming: false,
-        error: aborted ? undefined : err instanceof ApiError ? err.message : 'AI request failed',
-      }));
+      const selection = path ? getSelection() : '';
+      await saveNow();
+      const input: { prompt: string; path?: string; selection?: string } = { prompt: text };
+      if (path) input.path = path;
+      if (selection) input.selection = selection;
+      setMessage('');
+      stickRef.current = true;
+      await agent.send(input);
     } finally {
-      if (abortRef.current === ctrl) abortRef.current = null;
+      setSending(false);
     }
-  }
-
-  function ask() {
-    const q = question.trim();
-    if (!q) return;
-    setQuestion('');
-    void run(effectiveScope === 'vault' ? 'ask-vault' : 'ask', q, q);
   }
 
   return (
     <aside className="ai-panel" aria-label="AI assistant">
       <div className="ai-header">
         <strong>AI</strong>
-        {status?.enabled && <span className="ai-model">{status.model}</span>}
+        {enabled && (
+          <select
+            className="ai-session-select"
+            aria-label="Session"
+            value={agent.sessionId ?? ''}
+            onChange={(e) => agent.select(e.target.value || null)}
+          >
+            <option value="">New session</option>
+            {agent.sessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.running ? '● ' : ''}
+                {s.title}
+              </option>
+            ))}
+          </select>
+        )}
         <span className="ai-header-tools">
-          {status?.enabled && (
-            <button onClick={onOpenProfile} title={`Personalise the assistant by editing ${status.profileNote}`}>
-              {status.profileExists ? 'Profile' : 'Set up profile'}
-            </button>
-          )}
-          {entries.length > 0 && (
-            <button onClick={() => { abortRef.current?.abort(); setEntries([]); }} title="Clear conversation">Clear</button>
+          {enabled && (
+            <>
+              <button aria-label="New session" title="New session" onClick={() => agent.select(null)}>＋</button>
+              {agent.sessionId && (
+                <button
+                  aria-label="Delete session"
+                  title="Delete this session"
+                  disabled={busy}
+                  onClick={() => void agent.remove(agent.sessionId!)}
+                >
+                  🗑
+                </button>
+              )}
+              <button onClick={onOpenProfile} title={`Personalise the agent by editing ${status!.profileNote}`}>
+                {status!.profileExists ? 'Profile' : 'Set up profile'}
+              </button>
+            </>
           )}
           <button aria-label="Close AI panel" onClick={onClose}>✕</button>
         </span>
@@ -130,85 +96,77 @@ export function AiPanel({ status, path, getContent, getSelection, onApply, onOpe
 
       {!status ? (
         <div className="panel-empty">Checking AI status…</div>
-      ) : !status.enabled ? (
+      ) : !enabled ? (
         <div className="ai-disabled">
-          AI is not configured. Set <code>GEMINI_API_KEY</code> on the server (get one at
-          {' '}<a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a>)
-          {' '}and restart.
+          The agent is not configured. Set <code>ANTHROPIC_API_KEY</code> on the server (create one in the{' '}
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Claude Console</a>) and restart.
         </div>
       ) : (
         <>
-          {path && (
-            <div className="ai-quick">
-              {QUICK_ACTIONS.map((q) => (
-                <button key={q.action} title={q.title} disabled={busy} onClick={() => void run(q.action, q.label)}>
-                  {q.label}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="ai-log" ref={logRef} data-testid="ai-log">
-            {entries.length === 0 && (
+          <div
+            className="ai-log"
+            ref={logRef}
+            data-testid="ai-log"
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            }}
+          >
+            {turns.length === 0 && (
               <div className="panel-empty">
-                {path
-                  ? 'Run an action on this note (or your selection), or ask a question below.'
-                  : 'Ask a question about your vault.'}
+                Ask Claude to find, write, reorganise or clean up notes anywhere in the vault. Every change it makes can be undone.
+                <span className="ai-model">{status.model}</span>
               </div>
             )}
-            {entries.map((e) => (
-              <div key={e.id} className="ai-entry">
-                <div className="ai-request">
-                  {e.label}
-                  {e.usedSelection && <span className="ai-tag">selection</span>}
-                  {e.action === 'ask-vault' && <span className="ai-tag">vault</span>}
-                </div>
-                {e.error ? (
-                  <div className="ai-error" role="alert">{e.error}</div>
-                ) : (
-                  <AiOutput text={e.output} streaming={e.streaming} />
-                )}
-                {!e.streaming && !e.error && e.output && (
-                  <div className="ai-apply">
-                    {path && (
-                      <>
-                        <button onClick={() => onApply('insert', e.output)} title="Insert at the cursor (replaces the selection)">Insert</button>
-                        <button onClick={() => onApply('append', e.output)} title="Append to the end of the note">Append</button>
-                        {e.action === 'tidy' && (
-                          <button onClick={() => onApply('replace', e.output)} title={e.usedSelection ? 'Replace the selection' : 'Replace the whole note'}>
-                            {e.usedSelection ? 'Replace selection' : 'Replace note'}
-                          </button>
-                        )}
-                      </>
-                    )}
-                    <button onClick={() => void navigator.clipboard?.writeText(e.output)}>Copy</button>
-                  </div>
-                )}
-              </div>
+            {turns.map((t) => (
+              <TurnView
+                key={t.id}
+                turn={t}
+                model={agent.session!.model}
+                onOpenNote={onOpenNote}
+                undoDisabled={busy}
+                onUndo={(ids, resolution) => agent.undo(t.id, ids, resolution)}
+              />
+            ))}
+          </div>
+          {agent.error && (
+            <div className="ai-error ai-panel-error" role="alert">
+              {agent.error}
+            </div>
+          )}
+          <div className="ai-quick">
+            {QUICK_PROMPTS.map((q) => (
+              <button key={q.id} title={q.title} disabled={!path || busy} onClick={() => void send(q.prompt)}>
+                {q.label}
+              </button>
             ))}
           </div>
           <form
             className="ai-ask"
-            onSubmit={(ev) => { ev.preventDefault(); ask(); }}
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              void send(message);
+            }}
           >
             <textarea
-              value={question}
+              value={message}
               rows={3}
-              placeholder={effectiveScope === 'vault' ? 'Ask across your notes…' : 'Ask about this note…'}
-              aria-label="Question"
-              onChange={(ev) => setQuestion(ev.target.value)}
+              placeholder={path ? 'Ask or tell Claude what to do — the open note is shared as context' : 'Ask or tell Claude what to do in your vault'}
+              aria-label="Message"
+              onChange={(ev) => setMessage(ev.target.value)}
               onKeyDown={(ev) => {
-                if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); ask(); }
+                if (ev.key === 'Enter' && !ev.shiftKey) {
+                  ev.preventDefault();
+                  void send(message);
+                }
               }}
             />
             <div className="ai-ask-row">
-              <div className="ai-scope" role="group" aria-label="Question scope">
-                <button type="button" aria-pressed={effectiveScope === 'note'} disabled={!path} onClick={() => setScope('note')}>This note</button>
-                <button type="button" aria-pressed={effectiveScope === 'vault'} onClick={() => setScope('vault')}>Vault</button>
-              </div>
-              {busy ? (
-                <button type="button" onClick={() => abortRef.current?.abort()}>Stop</button>
+              <span className="ai-hint">{path ? `📄 ${path.replace(/\.md$/, '')}` : 'No note open'}</span>
+              {agent.session?.running ? (
+                <button type="button" onClick={agent.stop}>Stop</button>
               ) : (
-                <button type="submit" className="primary" disabled={!question.trim()}>Ask</button>
+                <button type="submit" className="primary" disabled={!message.trim() || busy}>Send</button>
               )}
             </div>
           </form>
@@ -216,15 +174,4 @@ export function AiPanel({ status, path, getContent, getSelection, onApply, onOpe
       )}
     </aside>
   );
-}
-
-function AiOutput({ text, streaming }: { text: string; streaming: boolean }) {
-  const [html, setHtml] = useState('');
-  useEffect(() => {
-    let cancelled = false;
-    void renderMarkdown(text).then((h) => { if (!cancelled) setHtml(h); });
-    return () => { cancelled = true; };
-  }, [text]);
-  if (!text && streaming) return <div className="ai-output ai-thinking">Thinking…</div>;
-  return <div className="ai-output reading-view" dangerouslySetInnerHTML={{ __html: html }} />;
 }

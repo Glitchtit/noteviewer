@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PROFILE_TEMPLATE, type AiStatus, type TreeNode } from '@noteviewer/shared';
 import { api, ApiError, onNetworkError } from './api';
-import { AiPanel, type ApplyMode } from './components/AiPanel';
+import { AiPanel } from './components/AiPanel';
 import { ConflictBar } from './components/ConflictBar';
 import { ContextMenu, type ContextMenuItem } from './components/ContextMenu';
 import { EditorPane, type EditorPaneHandle } from './components/EditorPane';
@@ -267,32 +267,6 @@ export function App() {
     return view.state.sliceDoc(from, to);
   }
 
-  // Apply AI output to the note. In the editor this is a normal CodeMirror
-  // transaction (undoable, flows through onChange); elsewhere (reading or
-  // board view) there's no cursor, so insert degrades to append.
-  function applyAi(mode: ApplyMode, text: string) {
-    const view = editorRef.current?.view;
-    if (view && !(kanban && boardMode) && viewMode === 'edit') {
-      const doc = view.state.doc;
-      const { from, to } = view.state.selection.main;
-      const changes =
-        mode === 'append'
-          ? { from: doc.length, insert: `${blockSeparator(doc.toString())}${text}` }
-          : mode === 'replace' && from === to
-            ? { from: 0, to: doc.length, insert: text }
-            : { from, to, insert: text };
-      view.dispatch({ changes, scrollIntoView: true });
-      view.focus();
-      return;
-    }
-    const buf = editor.getBuffer();
-    if (mode === 'replace') {
-      editor.applyLocalContent(text);
-    } else {
-      editor.applyLocalContent(`${buf}${blockSeparator(buf)}${text}`);
-    }
-  }
-
   async function openAiProfile() {
     if (!aiStatus) return;
     setActionError(null);
@@ -511,9 +485,12 @@ export function App() {
         <AiPanel
           status={aiStatus}
           path={path}
-          getContent={editor.getBuffer}
           getSelection={editorSelection}
-          onApply={applyAi}
+          saveNow={editor.saveNow}
+          onOpenNote={(t) => {
+            const r = tree && (resolveLink(tree, t) ?? (t.endsWith('.md') ? t : undefined));
+            if (r) void openNote(r);
+          }}
           onOpenProfile={() => void openAiProfile()}
           onClose={() => setAiOpen(false)}
         />
@@ -542,12 +519,6 @@ export function App() {
 
 function noteTitle(p: string): string {
   return (p.split('/').pop() ?? p).replace(/\.md$/i, '');
-}
-
-/** Newlines needed after `text` so appended content starts a new Markdown block. */
-function blockSeparator(text: string): string {
-  if (!text || text.endsWith('\n\n')) return '';
-  return text.endsWith('\n') ? '\n' : '\n\n';
 }
 
 function NameInput({
