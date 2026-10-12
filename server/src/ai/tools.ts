@@ -114,7 +114,13 @@ const IMAGE_TYPES: Record<string, 'image/png' | 'image/jpeg' | 'image/gif' | 'im
   '.gif': 'image/gif',
   '.webp': 'image/webp',
 };
-const MAX_BINARY = 20 * 1024 * 1024;
+/**
+ * Raw-size caps for viewing files. Results stay in the session history and are
+ * resent on every request, so a file the API rejects (images over 5 MB once
+ * base64-encoded, very large PDFs) would break the session for good.
+ */
+const MAX_IMAGE = Math.floor((5 * 1024 * 1024 * 3) / 4) - 1024;
+const MAX_PDF = 8 * 1024 * 1024;
 const MAX_LINE = 2000;
 
 class ToolError extends Error {}
@@ -334,7 +340,12 @@ export class VaultTools {
     const imageType = IMAGE_TYPES[ext];
     if (imageType || ext === '.pdf') {
       const stat = await fs.stat(abs);
-      if (stat.size > MAX_BINARY) throw new ToolError(`File too large to view (${Math.round(stat.size / 1e6)} MB)`);
+      const max = imageType ? MAX_IMAGE : MAX_PDF;
+      if (stat.size > max) {
+        throw new ToolError(
+          `${rel} is too large to view (${(stat.size / 1024 / 1024).toFixed(1)} MB; limit ${(max / 1024 / 1024).toFixed(1)} MB for ${imageType ? 'images' : 'PDFs'}).`,
+        );
+      }
       const data = (await fs.readFile(abs)).toString('base64');
       const content: ToolContent = imageType
         ? [{ type: 'image', source: { type: 'base64', media_type: imageType, data } }]

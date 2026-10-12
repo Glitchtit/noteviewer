@@ -70,6 +70,16 @@ describe('read-only tools', () => {
     expect((out.content as { type: string }[])[0]!.type).toBe('image');
   });
 
+  it('refuses images and PDFs too large for the API instead of poisoning the session', async () => {
+    const { tools } = await setup({ 'big.jpg': 'x'.repeat(4 * 1024 * 1024), 'big.pdf': 'x'.repeat(9 * 1024 * 1024) });
+    for (const p of ['big.jpg', 'big.pdf']) {
+      const out = await tools.run('read', { path: p });
+      expect(out.isError).toBe(true);
+      expect(typeof out.content).toBe('string');
+      expect(out.content).toMatch(/too large/);
+    }
+  });
+
   it('searches the index', async () => {
     const { tools } = await setup({ 'k8s.md': 'kubernetes cluster notes', 'other.md': 'cooking' });
     const out = await tools.run('search', { query: 'kubernetes' });
