@@ -1,18 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { NoteResponse } from '@noteviewer/shared';
-import fs from 'node:fs/promises';
 import fastifyStatic from '@fastify/static';
-import {
-  buildTree,
-  isHiddenName,
-  readNote,
-  trashNote,
-  uniqueCopyPath,
-  writeNoteAtomic,
-} from '../vault/files.js';
-import { resolveVaultPath, PathError } from '../vault/paths.js';
-import { rewriteLinks } from '../vault/rename.js';
-import path from 'node:path';
+import { buildTree, isHiddenName, readNote } from '../vault/files.js';
+import { PathError } from '../vault/paths.js';
+import { createNote, deleteNote, renameNote, writeNote } from '../vault/ops.js';
 import { badNotePath, relParam } from './params.js';
 
 export async function vaultRoutes(app: FastifyInstance): Promise<void> {
@@ -60,15 +51,8 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
       const rel = relParam(req.params);
       if (badNotePath(rel)) return reply.code(404).send({ error: 'bad path' });
       try {
-        const result = await writeNoteAtomic(
-          app.vaultRoot,
-          rel,
-          req.body.content,
-          req.body.baseHash,
-        );
+        const result = await writeNote(app, rel, req.body.content, req.body.baseHash);
         if (result.conflict) return reply.code(409).send({ current: result.current });
-        await app.index.updateNote(rel);
-        app.bus.emitEvent({ type: 'note-changed', path: rel });
         return { mtimeMs: result.mtimeMs, hash: result.hash };
       } catch (err) {
         if (err instanceof PathError) return reply.code(404).send({ error: 'bad path' });
@@ -93,25 +77,12 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     async (req, reply) => {
-      let rel = req.body.path;
+      const rel = req.body.path;
       if (badNotePath(rel)) return reply.code(400).send({ error: 'bad path' });
       try {
-        let exists = true;
-        try {
-          await fs.access(resolveVaultPath(app.vaultRoot, rel));
-        } catch {
-          exists = false;
-        }
-        if (exists) {
-          if (!req.body.unique) return reply.code(409).send({ error: 'already exists' });
-          rel = await uniqueCopyPath(app.vaultRoot, rel);
-        }
-        const result = await writeNoteAtomic(app.vaultRoot, rel, req.body.content ?? '');
-        if (result.conflict) return reply.code(409).send({ error: 'already exists' });
-        await app.index.updateNote(rel);
-        app.bus.emitEvent({ type: 'tree-changed' });
-        app.bus.emitEvent({ type: 'note-changed', path: rel });
-        return reply.code(201).send({ path: rel, mtimeMs: result.mtimeMs, hash: result.hash });
+        const created = await createNote(app, rel, req.body.content ?? '', req.body.unique ?? false);
+        if (!created) return reply.code(409).send({ error: 'already exists' });
+        return reply.code(201).send(created);
       } catch (err) {
         if (err instanceof PathError) return reply.code(400).send({ error: 'bad path' });
         throw err;
@@ -123,10 +94,7 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
     const rel = relParam(req.params);
     if (badNotePath(rel)) return reply.code(404).send({ error: 'note not found' });
     try {
-      const trashedTo = await trashNote(app.vaultRoot, rel);
-      app.index.removeNote(rel);
-      await app.shares.removePath(rel);
-      app.bus.emitEvent({ type: 'tree-changed' });
+      const trashedTo = await deleteNote(app, rel);
       return { trashedTo };
     } catch (err) {
       if (err instanceof PathError || (err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -151,55 +119,9 @@ export async function vaultRoutes(app: FastifyInstance): Promise<void> {
       const { from, to } = req.body;
       if (badNotePath(from) || badNotePath(to)) return reply.code(400).send({ error: 'bad path' });
       try {
-        const fromAbs = resolveVaultPath(app.vaultRoot, from);
-        const toAbs = resolveVaultPath(app.vaultRoot, to);
-        try {
-          await fs.access(toAbs);
-          return reply.code(409).send({ error: 'target exists' });
-        } catch {
-          // target free
-        }
-        const referrers = app.index.backlinksOf(from);
-        await fs.mkdir(path.dirname(toAbs), { recursive: true });
-        await fs.rename(fromAbs, toAbs);
-        const oldName = path.posix.basename(from, '.md');
-        const newName = path.posix.basename(to, '.md');
-        const fromPathNoExt = from.slice(0, -'.md'.length);
-        const toPathNoExt = to.slice(0, -'.md'.length);
-        const applyRewrites = (content: string): string => {
-          let updated = rewriteLinks(content, oldName, newName);
-          if (fromPathNoExt !== oldName) {
-            updated = rewriteLinks(updated, fromPathNoExt, toPathNoExt);
-          }
-          return updated;
-        };
-        const rewritten: string[] = [];
-        for (const ref of referrers) {
-          let file = await readNote(app.vaultRoot, ref);
-          const updated = applyRewrites(file.content);
-          if (updated !== file.content) {
-            let result = await writeNoteAtomic(app.vaultRoot, ref, updated, file.hash);
-            if (result.conflict) {
-              // Retry: re-read and attempt write with fresh hash
-              file = await readNote(app.vaultRoot, ref);
-              const retryUpdated = applyRewrites(file.content);
-              if (retryUpdated !== file.content) {
-                result = await writeNoteAtomic(app.vaultRoot, ref, retryUpdated, file.hash);
-              }
-            }
-            // Only include in rewritten if write succeeded (no conflict)
-            if (!result.conflict) {
-              await app.index.updateNote(ref);
-              rewritten.push(ref);
-            }
-          }
-        }
-        app.index.removeNote(from);
-        await app.index.updateNote(to);
-        await app.shares.renamePath(from, to);
-        app.bus.emitEvent({ type: 'tree-changed' });
-        for (const ref of rewritten) app.bus.emitEvent({ type: 'note-changed', path: ref });
-        return { rewritten };
+        const res = await renameNote(app, from, to);
+        if (!res) return reply.code(409).send({ error: 'target exists' });
+        return res;
       } catch (err) {
         if (err instanceof PathError || (err as NodeJS.ErrnoException).code === 'ENOENT') {
           return reply.code(404).send({ error: 'source not found' });
