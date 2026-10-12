@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, encodePath, onNetworkError } from '../src/api';
+import { aiEventsUrl, api, apiErrorMessage, ApiError, encodePath, onNetworkError } from '../src/api';
 
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
@@ -76,24 +76,44 @@ describe('api client', () => {
   });
 });
 
-describe('streamAi', () => {
-  it('POSTs the request and yields streamed text', async () => {
-    const { streamAi } = await import('../src/api');
-    fetchMock.mockResolvedValue(new Response('Hello world', { status: 200 }));
-    const chunks: string[] = [];
-    await streamAi({ action: 'summarize', content: 'x' }, (t) => chunks.push(t));
-    expect(chunks.join('')).toBe('Hello world');
+describe('agent client', () => {
+  it('starts a run with the prompt and context', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(202, { turnId: 't1' }));
+    const res = await api.aiRun('abc', { prompt: 'hi', path: 'a.md', selection: 'sel' });
+    expect(res.turnId).toBe('t1');
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/api/ai');
-    expect(JSON.parse(init.body)).toEqual({ action: 'summarize', content: 'x' });
+    expect(url).toBe('/api/ai/sessions/abc/runs');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ prompt: 'hi', path: 'a.md', selection: 'sel' });
   });
 
-  it('rejects with the server error message', async () => {
-    const { streamAi } = await import('../src/api');
-    fetchMock.mockResolvedValue(jsonResponse(503, { error: 'AI is not configured' }));
-    await expect(streamAi({ action: 'summarize' }, () => {})).rejects.toMatchObject({
-      status: 503,
-      message: 'AI is not configured',
-    });
+  it('posts undo requests with ids and a resolution', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { results: [] }));
+    await api.aiUndo('abc', 't1', { changeIds: ['c1'], resolution: 'copy' });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/ai/sessions/abc/turns/t1/undo');
+    expect(JSON.parse(init.body)).toEqual({ changeIds: ['c1'], resolution: 'copy' });
+  });
+
+  it('creates, stops and deletes sessions', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { id: 'abc' }));
+    expect((await api.aiCreateSession()).id).toBe('abc');
+    expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
+    fetchMock.mockResolvedValue(jsonResponse(200, { stopped: true }));
+    await api.aiStop('abc');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/api/ai/sessions/abc/stop');
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    await api.aiDeleteSession('abc');
+    expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
+  });
+
+  it('builds the events URL', () => {
+    expect(aiEventsUrl('abc')).toBe('/api/ai/sessions/abc/events');
+  });
+
+  it("extracts the server's error message", () => {
+    expect(apiErrorMessage(new ApiError(409, 'request failed: 409', { error: 'busy' }), 'fallback')).toBe('busy');
+    expect(apiErrorMessage(new ApiError(500, 'x'), 'fallback')).toBe('fallback');
+    expect(apiErrorMessage(new Error('boom'), 'fallback')).toBe('fallback');
   });
 });

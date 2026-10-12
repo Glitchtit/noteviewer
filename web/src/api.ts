@@ -1,5 +1,6 @@
 import type {
-  AiAction,
+  AiSession,
+  AiSessionSummary,
   AiStatus,
   GraphData,
   NoteResponse,
@@ -7,6 +8,8 @@ import type {
   SearchResult,
   ShareWithUrl,
   TreeNode,
+  UndoResolution,
+  UndoResult,
 } from '@noteviewer/shared';
 
 export class ApiError extends Error {
@@ -73,6 +76,23 @@ export const api = {
   search: (q: string) => request<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`),
   graph: () => request<GraphData>('/api/graph'),
   aiStatus: () => request<AiStatus>('/api/ai/status'),
+  aiSessions: () => request<AiSessionSummary[]>('/api/ai/sessions'),
+  aiCreateSession: () => request<{ id: string }>('/api/ai/sessions', { method: 'POST' }),
+  aiSession: (id: string) => request<AiSession>(`/api/ai/sessions/${encodeURIComponent(id)}`),
+  aiDeleteSession: (id: string) =>
+    request<void>(`/api/ai/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  aiRun: (id: string, body: { prompt: string; path?: string; selection?: string }) =>
+    request<{ turnId: string }>(`/api/ai/sessions/${encodeURIComponent(id)}/runs`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  aiStop: (id: string) =>
+    request<{ stopped: boolean }>(`/api/ai/sessions/${encodeURIComponent(id)}/stop`, { method: 'POST' }),
+  aiUndo: (id: string, turnId: string, body: { changeIds?: string[]; resolution?: UndoResolution }) =>
+    request<{ results: UndoResult[] }>(
+      `/api/ai/sessions/${encodeURIComponent(id)}/turns/${encodeURIComponent(turnId)}/undo`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   shares: (path: string) => request<ShareWithUrl[]>(`/api/shares?path=${encodeURIComponent(path)}`),
   createShare: (path: string, expiresInDays: number | null) =>
     request<ShareWithUrl>('/api/shares', {
@@ -88,43 +108,16 @@ export const api = {
   pdfUrl: (path: string) => `/api/pdf/${encodePath(path)}`,
 };
 
-export interface AiRequest {
-  action: AiAction;
-  path?: string;
-  content?: string;
-  selection?: string;
-  prompt?: string;
-  history?: { role: 'user' | 'model'; text: string }[];
+/** URL of a session's SSE stream (snapshot, then live run events). */
+export function aiEventsUrl(id: string): string {
+  return `/api/ai/sessions/${encodeURIComponent(id)}/events`;
 }
 
-/**
- * POST /api/ai and feed each streamed text delta to onText. Resolves when the
- * response ends; rejects with ApiError (message = server's error) on failure.
- * Aborting via `signal` rejects with the fetch AbortError.
- */
-export async function streamAi(
-  req: AiRequest,
-  onText: (delta: string) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const res = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(req),
-    signal,
-  });
-  if (!res.ok || !res.body) {
-    const body = (await res.json().catch(() => undefined)) as { error?: string } | undefined;
-    throw new ApiError(res.status, body?.error ?? `request failed: ${res.status}`, body);
+/** The server's `{ error }` message for an ApiError, else the fallback. */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    const msg = (err.body as { error?: unknown } | undefined)?.error;
+    if (typeof msg === 'string' && msg) return msg;
   }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const text = decoder.decode(value, { stream: true });
-    if (text) onText(text);
-  }
-  const tail = decoder.decode();
-  if (tail) onText(tail);
+  return fallback;
 }
