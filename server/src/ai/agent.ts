@@ -114,7 +114,20 @@ function emitServerTools(content: BetaContentBlock[], call: number, turnId: stri
   });
 }
 
-export async function runAgent(a: {
+/**
+ * A paused assistant turn (stop_reason pause_turn) whose server-side tool call
+ * never got its result. Such a turn must be resumed as-is; it can't be followed
+ * by a new user message.
+ */
+export function isUnfinishedPause(m: BetaMessageParam | undefined): boolean {
+  if (m?.role !== 'assistant' || !Array.isArray(m.content)) return false;
+  const answered = new Set(
+    m.content.map((b) => (b as { tool_use_id?: string }).tool_use_id).filter((id): id is string => Boolean(id)),
+  );
+  return m.content.some((b) => b.type === 'server_tool_use' && !answered.has(b.id));
+}
+
+type RunArgs = {
   client: AgentClient;
   config: AgentConfig;
   system: string;
@@ -123,7 +136,17 @@ export async function runAgent(a: {
   turnId: string;
   signal: AbortSignal;
   emit: AgentEmit;
-}): Promise<RunResult> {
+};
+
+export async function runAgent(a: RunArgs): Promise<RunResult> {
+  const result = await runLoop(a);
+  // a run that ends mid-pause (stopped, round limit, API error) would leave
+  // a turn that can't be continued by the next prompt: drop it
+  if (result.status !== 'done' && isUnfinishedPause(a.messages.at(-1))) a.messages.pop();
+  return result;
+}
+
+async function runLoop(a: RunArgs): Promise<RunResult> {
   const { client, config, system, messages, tools, turnId, signal, emit } = a;
   let usage: AiUsage = { ...ZERO_USAGE };
   let call = 0;

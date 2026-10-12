@@ -73,6 +73,19 @@ describe('SessionStore', () => {
 });
 
 describe('repairSession', () => {
+  it('drops a trailing paused turn whose server tool never finished', () => {
+    const s: StoredSession = {
+      id: 'x', title: '', createdAt: '', updatedAt: '', model: 'm', system: 's', seen: {}, turns: [],
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      messages: [
+        { role: 'user', content: 'search' },
+        { role: 'assistant', content: [{ type: 'server_tool_use', id: 's1', name: 'web_search', input: { query: 'q' } }] },
+      ],
+    };
+    expect(repairSession(s)).toBe(true);
+    expect(s.messages).toEqual([{ role: 'user', content: 'search' }]);
+  });
+
   it('leaves a healthy session untouched', () => {
     const s: StoredSession = {
       id: 'x', title: '', createdAt: '', updatedAt: '', model: 'm', system: 's', seen: {}, turns: [],

@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { BetaMessageParam, BetaToolResultBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
+import { isUnfinishedPause } from './agent.js';
 import { ZERO_USAGE, type AiSession, type AiTurn, type AiUsage } from '@noteviewer/shared';
 
 export interface StoredSession {
@@ -44,6 +45,10 @@ export function repairSession(s: StoredSession): boolean {
       t.endedAt ??= new Date().toISOString();
       changed = true;
     }
+  }
+  if (isUnfinishedPause(s.messages.at(-1))) {
+    s.messages.pop();
+    changed = true;
   }
   const last = s.messages.at(-1);
   if (last?.role === 'assistant' && Array.isArray(last.content)) {

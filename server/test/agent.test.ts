@@ -151,6 +151,30 @@ describe('runAgent', () => {
     expect(h.events).toContainEqual(expect.objectContaining({ type: 'tool_end', summary: 'web_search "q"' }));
   });
 
+  it('drops an unfinished paused turn when the round limit stops the run', async () => {
+    const h = await harness(
+      [msg([{ type: 'server_tool_use', id: 's1', name: 'web_search', input: { query: 'q' } }], 'pause_turn')],
+      {},
+      { ...config, maxRounds: 1 },
+    );
+    expect((await h.run()).status).toBe('error');
+    expect(h.messages).toHaveLength(1);
+    expect(h.messages[0]!.role).toBe('user');
+  });
+
+  it('drops an unfinished paused turn when stopped', async () => {
+    const gate = deferred();
+    const h = await harness([
+      msg([{ type: 'server_tool_use', id: 's1', name: 'web_search', input: { query: 'q' } }], 'pause_turn'),
+      { message: msg([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }]), wait: gate.promise },
+    ]);
+    const p = h.run();
+    await new Promise((r) => setTimeout(r, 20));
+    h.abort.abort();
+    expect((await p).status).toBe('stopped');
+    expect(h.messages.map((m) => m.role)).toEqual(['user']);
+  });
+
   it('never runs a tool whose input was cut off by max_tokens', async () => {
     const h = await harness([msg([{ type: 'tool_use', id: 'w', name: 'write', input: { path: 'n.md', content: 'trunc' } }], 'max_tokens')]);
     const res = await h.run();
