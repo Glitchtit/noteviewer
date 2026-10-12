@@ -64,6 +64,18 @@ describe('buildParams', () => {
     expect(p.tools.at(-2)).toMatchObject({ type: 'web_search_20260209', max_uses: 8 });
   });
 
+  it('sends the dynamic-filtering web tools only to models documented to support them', () => {
+    const web = (model: string) =>
+      ((buildParams({ ...config, model }, 'SYS', []) as Record<string, any>).tools as { type?: string }[])
+        .filter((t) => t.type)
+        .map((t) => t.type);
+    expect(web('claude-opus-5-5')).toEqual(['web_search_20260209', 'web_fetch_20260209']);
+    expect(web('claude-sonnet-5-5')).toEqual(['web_search_20260209', 'web_fetch_20260209']);
+    for (const model of ['claude-haiku-5-5', 'claude-fable-5-1', 'some-future-model']) {
+      expect(web(model)).toEqual(['web_search_20250305', 'web_fetch_20250910']);
+    }
+  });
+
   it('omits fallbacks for models without a server-side fallback', () => {
     for (const model of ['claude-haiku-5-5', 'some-future-model']) {
       const p = buildParams({ ...config, model }, 'SYS', []) as Record<string, any>;
@@ -88,6 +100,17 @@ describe('runAgent', () => {
     expect(h.events).toContainEqual({ type: 'text_delta', turnId: 't1', itemId: '1.1', text: 'Hello' });
     expect(h.messages.at(-1)).toMatchObject({ role: 'assistant', content: [{ type: 'thinking' }, { type: 'text', text: 'Hello' }] });
     expect(h.events.filter((e) => e.type === 'usage').at(-1)).toMatchObject({ usage: { inputTokens: 10, outputTokens: 5 } });
+  });
+
+  it('prices every request and accumulates the cost', async () => {
+    const h = await harness([
+      msg([{ type: 'tool_use', id: 'a', name: 'list', input: {} }], 'tool_use'),
+      msg([{ type: 'text', text: 'ok' }]),
+    ]);
+    await h.run();
+    const usage = (h.events.filter((e) => e.type === 'usage').at(-1) as { usage: { costUsd?: number } }).usage;
+    // two requests of 10 in / 5 out on Opus 5.5 ($4 / $20 per MTok)
+    expect(usage.costUsd).toBeCloseTo(2 * (10 * 4 + 5 * 20) / 1e6, 10);
   });
 
   it('runs a tool and sends its result back', async () => {

@@ -45,6 +45,18 @@ describe('RunManager', () => {
     expect(stored.messages).toHaveLength(2);
   });
 
+  it('runs with the model and effort chosen for the turn and records them', async () => {
+    const s = await setup([msg([{ type: 'text', text: 'a' }]), msg([{ type: 'text', text: 'b' }])]);
+    s.runs.start(s.session.id, { prompt: 'one', model: 'claude-haiku-5-5', effort: 'low' });
+    await finished(s.runs, s.session.id);
+    s.runs.start(s.session.id, { prompt: 'two' });
+    await finished(s.runs, s.session.id);
+    expect(s.calls[0]).toMatchObject({ model: 'claude-haiku-5-5', output_config: { effort: 'low' } });
+    expect(s.calls[1]).toMatchObject({ model: 'claude-opus-5-5', output_config: { effort: 'high' } });
+    const turns = s.store.get(s.session.id)!.turns;
+    expect(turns.map((t) => [t.model, t.effort])).toEqual([['claude-haiku-5-5', 'low'], ['claude-opus-5-5', 'high']]);
+  });
+
   it('refuses a second run while one is active', async () => {
     const gate = deferred();
     const s = await setup([{ message: msg([{ type: 'text', text: 'x' }]), wait: gate.promise }]);

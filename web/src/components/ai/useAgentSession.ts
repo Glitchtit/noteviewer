@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { foldEvent, type AgentEvent, type AiSession, type AiSessionSummary, type UndoResolution, type UndoResult } from '@noteviewer/shared';
+import { foldEvent, type AgentEvent, type AiEffort, type AiSession, type AiSessionSummary, type UndoResolution, type UndoResult } from '@noteviewer/shared';
 import { aiEventsUrl, api, apiErrorMessage } from '../../api';
 
 const LAST_SESSION_KEY = 'noteviewer.ai.session';
@@ -27,7 +27,7 @@ export interface AgentSessionApi {
   sessionId: string | null;
   error: string | null;
   select(id: string | null): void;
-  send(input: { prompt: string; path?: string; selection?: string }): Promise<void>;
+  send(input: { prompt: string; path?: string; selection?: string; model?: string; effort?: AiEffort }): Promise<void>;
   stop(): void;
   undo(turnId: string, changeIds?: string[], resolution?: UndoResolution): Promise<UndoResult[]>;
   remove(id: string): Promise<void>;
@@ -108,7 +108,7 @@ export function useAgentSession(enabled: boolean): AgentSessionApi {
   }, []);
 
   const send = useCallback(
-    async (input: { prompt: string; path?: string; selection?: string }) => {
+    async (input: { prompt: string; path?: string; selection?: string; model?: string; effort?: AiEffort }) => {
       setError(null);
       try {
         let id = idRef.current;
@@ -119,11 +119,13 @@ export function useAgentSession(enabled: boolean): AgentSessionApi {
           remember(id);
         }
         await api.aiRun(id, input);
+        // a new session (and its title) only exists server-side from here on
+        void refreshList();
       } catch (err) {
         setError(apiErrorMessage(err, 'Could not start the agent.'));
       }
     },
-    [],
+    [refreshList],
   );
 
   const stop = useCallback(() => {

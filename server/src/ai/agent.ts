@@ -16,10 +16,10 @@ import type {
   BetaToolResultBlockParam,
   BetaToolUnion,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { ZERO_USAGE, addUsage, type AgentEvent, type AiUsage } from '@noteviewer/shared';
+import { ZERO_USAGE, addUsage, estimateCost, type AgentEvent, type AiEffort, type AiUsage } from '@noteviewer/shared';
 import { TOOL_DEFS, type VaultTools } from './tools.js';
 
-export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type Effort = AiEffort;
 
 export interface AgentConfig {
   model: string;
@@ -46,10 +46,20 @@ export interface RunResult {
   error?: string;
 }
 
-const WEB_TOOLS: BetaToolUnion[] = [
-  { type: 'web_search_20260209', name: 'web_search', max_uses: 8 },
-  { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 8 },
-];
+/** Models documented to support the dynamic-filtering web tool versions. */
+const DYNAMIC_WEB_MODELS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-sonnet-5']);
+
+function webTools(model: string): BetaToolUnion[] {
+  return DYNAMIC_WEB_MODELS.has(model)
+    ? [
+        { type: 'web_search_20260209', name: 'web_search', max_uses: 8 },
+        { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 8 },
+      ]
+    : [
+        { type: 'web_search_20250305', name: 'web_search', max_uses: 8 },
+        { type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 8 },
+      ];
+}
 
 const MAX_PARSE_RETRIES = 2;
 
@@ -70,7 +80,7 @@ export function buildParams(config: AgentConfig, system: string, messages: BetaM
     max_tokens: 64000,
     system: [{ type: 'text', text: system }],
     messages,
-    tools: [...TOOL_DEFS, ...WEB_TOOLS],
+    tools: [...TOOL_DEFS, ...webTools(config.model)],
     thinking: { type: 'adaptive', display: 'summarized' },
     output_config: { effort: config.effort },
     cache_control: { type: 'ephemeral' },
@@ -91,13 +101,16 @@ function apiErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function usageOf(m: BetaMessage): AiUsage {
-  return {
+function usageOf(m: BetaMessage, model: string): AiUsage {
+  const u: AiUsage = {
     inputTokens: m.usage?.input_tokens ?? 0,
     outputTokens: m.usage?.output_tokens ?? 0,
     cacheReadTokens: m.usage?.cache_read_input_tokens ?? 0,
     cacheWriteTokens: m.usage?.cache_creation_input_tokens ?? 0,
   };
+  // price each request on its own: rate cards can depend on the prompt size
+  u.costUsd = estimateCost(model, u);
+  return u;
 }
 
 /** UI rows for server-side tools (web search / fetch) found in a finished message. */
@@ -190,7 +203,7 @@ async function runLoop(a: RunArgs): Promise<RunResult> {
       return { status: 'error', error: apiErrorMessage(err) };
     }
 
-    usage = addUsage(usage, usageOf(message));
+    usage = addUsage(usage, usageOf(message, config.model));
     emit({ type: 'usage', turnId, usage });
     emitServerTools(message.content, call, turnId, emit);
 

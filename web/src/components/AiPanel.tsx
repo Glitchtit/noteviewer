@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { QUICK_PROMPTS, type AiStatus } from '@noteviewer/shared';
+import { AI_EFFORTS, AI_MODELS, QUICK_PROMPTS, modelLabel, type AiEffort, type AiStatus } from '@noteviewer/shared';
 import { TurnView } from './ai/TurnView';
 import { useAgentSession } from './ai/useAgentSession';
 
@@ -17,11 +17,35 @@ export interface AiPanelProps {
   onClose(): void;
 }
 
+const MODEL_KEY = 'noteviewer.ai.model';
+const EFFORT_KEY = 'noteviewer.ai.effort';
+
+function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function store(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // storage unavailable: the choice just isn't remembered
+  }
+}
+
 export function AiPanel({ status, path, getSelection, saveNow, onOpenNote, onOpenProfile, onClose }: AiPanelProps) {
   const enabled = Boolean(status?.enabled);
   const agent = useAgentSession(enabled);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [chosenModel, setChosenModel] = useState(() => stored(MODEL_KEY));
+  const [chosenEffort, setChosenEffort] = useState(() => stored(EFFORT_KEY));
+  // a remembered choice the server no longer offers falls back to its default
+  const model = status && chosenModel && status.models.includes(chosenModel) ? chosenModel : status?.models[0];
+  const effort = AI_EFFORTS.includes(chosenEffort as AiEffort) ? (chosenEffort as AiEffort) : status?.effort;
   const logRef = useRef<HTMLDivElement>(null);
   const busy = sending || Boolean(agent.session?.running);
   const turns = agent.session?.turns ?? [];
@@ -40,9 +64,11 @@ export function AiPanel({ status, path, getSelection, saveNow, onOpenNote, onOpe
     try {
       const selection = path ? getSelection() : '';
       await saveNow();
-      const input: { prompt: string; path?: string; selection?: string } = { prompt: text };
+      const input: Parameters<typeof agent.send>[0] = { prompt: text };
       if (path) input.path = path;
       if (selection) input.selection = selection;
+      if (model) input.model = model;
+      if (effort) input.effort = effort;
       setMessage('');
       stickRef.current = true;
       await agent.send(input);
@@ -122,7 +148,6 @@ export function AiPanel({ status, path, getSelection, saveNow, onOpenNote, onOpe
               <TurnView
                 key={t.id}
                 turn={t}
-                model={agent.session!.model}
                 onOpenNote={onOpenNote}
                 undoDisabled={busy}
                 onUndo={(ids, resolution) => agent.undo(t.id, ids, resolution)}
@@ -162,7 +187,38 @@ export function AiPanel({ status, path, getSelection, saveNow, onOpenNote, onOpe
               }}
             />
             <div className="ai-ask-row">
-              <span className="ai-hint">{path ? `📄 ${path.replace(/\.md$/, '')}` : 'No note open'}</span>
+              <span className="ai-pickers">
+                <select
+                  aria-label="Model"
+                  title={AI_MODELS.find((m) => m.id === model)?.note ?? 'Model'}
+                  value={model}
+                  onChange={(e) => {
+                    setChosenModel(e.target.value);
+                    store(MODEL_KEY, e.target.value);
+                  }}
+                >
+                  {status.models.map((id) => (
+                    <option key={id} value={id} title={AI_MODELS.find((m) => m.id === id)?.note}>
+                      {modelLabel(id)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Effort"
+                  title="Effort: how much Claude thinks before acting (more effort costs more)"
+                  value={effort}
+                  onChange={(e) => {
+                    setChosenEffort(e.target.value);
+                    store(EFFORT_KEY, e.target.value);
+                  }}
+                >
+                  {AI_EFFORTS.map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+              </span>
               {agent.session?.running ? (
                 <button type="button" onClick={agent.stop}>Stop</button>
               ) : (

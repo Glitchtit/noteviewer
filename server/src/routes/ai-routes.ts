@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import path from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
-import type { AiSessionSummary, AiStatus, UndoResolution } from '@noteviewer/shared';
+import { AI_EFFORTS, AI_MODELS, type AiEffort, type AiSessionSummary, type AiStatus, type UndoResolution } from '@noteviewer/shared';
 import { readNote } from '../vault/files.js';
 import type { AgentClient, AgentConfig, Effort } from '../ai/agent.js';
 import { buildSystemPrompt } from '../ai/prompt.js';
@@ -28,7 +28,6 @@ export interface AiOpts {
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 export const DEFAULT_PROFILE_NOTE = 'AI Profile.md';
 const CLAUDE_MD = 'CLAUDE.md';
-const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 const MAX_PROMPT = 100_000;
 const MAX_SELECTION = 100_000;
 
@@ -43,11 +42,13 @@ async function tryRead(root: string, rel: string): Promise<string | undefined> {
 export async function aiRoutes(app: FastifyInstance, opts: AiOpts): Promise<void> {
   const config: AgentConfig = {
     model: opts.model || DEFAULT_MODEL,
-    effort: EFFORTS.includes(opts.effort as Effort) ? (opts.effort as Effort) : 'high',
+    effort: AI_EFFORTS.includes(opts.effort as Effort) ? (opts.effort as Effort) : 'high',
     maxRounds: opts.maxRounds && opts.maxRounds > 0 ? opts.maxRounds : 60,
     fallbacks: opts.fallbacks ?? true,
   };
   const profileNote = opts.profileNote || DEFAULT_PROFILE_NOTE;
+  // the configured default first, then the built-in choices
+  const models = [...new Set([config.model, ...AI_MODELS.map((m) => m.id)])];
   const client: AgentClient | null = opts.apiKey
     ? (opts.client ?? (new Anthropic({ apiKey: opts.apiKey }) as unknown as AgentClient))
     : null;
@@ -62,6 +63,8 @@ export async function aiRoutes(app: FastifyInstance, opts: AiOpts): Promise<void
       profileNote,
       profileExists: app.index.getMeta(profileNote) !== undefined,
       claudeMdExists: app.index.getMeta(CLAUDE_MD) !== undefined,
+      models,
+      effort: config.effort,
     };
     return status;
   });
@@ -91,7 +94,10 @@ export async function aiRoutes(app: FastifyInstance, opts: AiOpts): Promise<void
     return reply.code(204).send();
   });
 
-  app.post<{ Params: { id: string }; Body: { prompt: string; path?: string; selection?: string } }>(
+  app.post<{
+    Params: { id: string };
+    Body: { prompt: string; path?: string; selection?: string; model?: string; effort?: AiEffort };
+  }>(
     '/api/ai/sessions/:id/runs',
     {
       schema: {
@@ -102,16 +108,18 @@ export async function aiRoutes(app: FastifyInstance, opts: AiOpts): Promise<void
             prompt: { type: 'string', maxLength: MAX_PROMPT },
             path: { type: 'string' },
             selection: { type: 'string', maxLength: MAX_SELECTION },
+            model: { type: 'string', enum: models },
+            effort: { type: 'string', enum: AI_EFFORTS },
           },
         },
       },
     },
     async (req, reply) => {
-      const { prompt, path: notePath, selection } = req.body;
+      const { prompt, path: notePath, selection, model, effort } = req.body;
       if (!prompt.trim()) return reply.code(400).send({ error: 'prompt required' });
       if (notePath !== undefined && badNotePath(notePath)) return reply.code(400).send({ error: 'bad path' });
       try {
-        const turn = runs.start(req.params.id, { prompt: prompt.trim(), path: notePath, selection });
+        const turn = runs.start(req.params.id, { prompt: prompt.trim(), path: notePath, selection, model, effort });
         return reply.code(202).send({ turnId: turn.id });
       } catch (err) {
         if (err instanceof SessionNotFoundError) return reply.code(404).send({ error: err.message });

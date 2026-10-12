@@ -42,6 +42,8 @@ describe('GET /api/ai/status', () => {
       profileNote: 'AI Profile.md',
       profileExists: false,
       claudeMdExists: false,
+      models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
+      effort: 'high',
     });
   });
 
@@ -114,10 +116,34 @@ describe('runs', () => {
     expect(await readFile(path.join(root, 'a.md'), 'utf8')).toBe('old');
   });
 
+  it('lists a custom default model first among the choices', async () => {
+    const root = await makeVault({});
+    app = await buildApp({ vaultRoot: root, ai: { apiKey: 'k', model: 'claude-opus-5', effort: 'medium', client: fakeClient([]).client } });
+    expect((await app.inject({ url: '/api/ai/status' })).json()).toMatchObject({
+      models: ['claude-opus-5', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
+      effort: 'medium',
+    });
+  });
+
+  it('runs with the requested model and effort', async () => {
+    const { calls } = await appFor({}, [msg([{ type: 'text', text: 'ok' }])]);
+    const id = await newSession();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/ai/sessions/${id}/runs`,
+      payload: { prompt: 'x', model: 'claude-sonnet-5-5', effort: 'xhigh' },
+    });
+    expect(res.statusCode).toBe(202);
+    await waitDone(id);
+    expect(calls[0]).toMatchObject({ model: 'claude-sonnet-5-5', output_config: { effort: 'xhigh' } });
+  });
+
   it('validates the run request', async () => {
     await appFor({});
     const id = await newSession();
     const post = (payload: object) => app.inject({ method: 'POST', url: `/api/ai/sessions/${id}/runs`, payload });
+    expect((await post({ prompt: 'x', model: 'gpt-9' })).statusCode).toBe(400);
+    expect((await post({ prompt: 'x', effort: 'extreme' })).statusCode).toBe(400);
     expect((await post({ prompt: '   ' })).statusCode).toBe(400);
     expect((await post({ prompt: 'x', path: '../x.md' })).statusCode).toBe(400);
     expect((await post({ prompt: 'x', path: '.obsidian/x.md' })).statusCode).toBe(400);

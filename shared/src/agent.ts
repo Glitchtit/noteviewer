@@ -13,6 +13,25 @@ export interface AiStatus {
   profileExists: boolean;
   /** a CLAUDE.md at the vault root is loaded into new sessions */
   claudeMdExists: boolean;
+  /** model ids a run may use (the default first) */
+  models: string[];
+  /** default effort for runs */
+  effort: AiEffort;
+}
+
+export type AiEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const AI_EFFORTS: AiEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** Models offered in the panel, with a short description for the picker. */
+export const AI_MODELS: { id: string; label: string; note: string }[] = [
+  { id: 'claude-opus-5-5', label: 'Opus 5.5', note: '$4 / $20 per MTok' },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', note: '$2 / $10 per MTok' },
+  { id: 'claude-haiku-5-5', label: 'Haiku 5.5', note: '$0.10 / $0.50 per MTok (5× above 100K-token prompts)' },
+  { id: 'claude-fable-5-1', label: 'Fable 5.1', note: 'most capable · $10 / $50 per MTok' },
+];
+
+export function modelLabel(id: string): string {
+  return AI_MODELS.find((m) => m.id === id)?.label ?? id;
 }
 
 export interface AiUsage {
@@ -20,9 +39,11 @@ export interface AiUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** estimated USD, priced per request; undefined once any request was unpriced */
+  costUsd?: number;
 }
 
-export const ZERO_USAGE: AiUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+export const ZERO_USAGE: AiUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
 
 export function addUsage(a: AiUsage, b: AiUsage): AiUsage {
   return {
@@ -30,6 +51,7 @@ export function addUsage(a: AiUsage, b: AiUsage): AiUsage {
     outputTokens: a.outputTokens + b.outputTokens,
     cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
     cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+    costUsd: a.costUsd === undefined || b.costUsd === undefined ? undefined : a.costUsd + b.costUsd,
   };
 }
 
@@ -85,6 +107,9 @@ export interface AiTurn {
   status: TurnStatus;
   error?: string;
   usage?: AiUsage;
+  /** model and effort the run used */
+  model?: string;
+  effort?: AiEffort;
   startedAt: string;
   endedAt?: string;
 }
@@ -216,18 +241,31 @@ export const QUICK_PROMPTS: { id: QuickPromptId; label: string; title: string; p
   },
 ];
 
-/** USD per million tokens. */
-const PRICES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
-  'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
-  'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
-  'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
-  'claude-fable-5-1': { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5 },
+interface RateCard {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/** USD per million tokens (5-minute cache writes). */
+const PRICES: Record<string, { base: RateCard; long?: { above: number; rates: RateCard } }> = {
+  'claude-opus-5-5': { base: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 } },
+  'claude-sonnet-5-5': { base: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 } },
+  'claude-haiku-5-5': {
+    base: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+    // prompts over 100K tokens are billed on a second rate card
+    long: { above: 100_000, rates: { input: 0.5, output: 2.5, cacheRead: 0.05, cacheWrite: 0.625 } },
+  },
+  'claude-fable-5-1': { base: { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5 } },
 };
 
-/** Estimated USD cost of the usage, or undefined for models without a known price. */
+/** Estimated USD cost of ONE request's usage, or undefined for models without a known price. */
 export function estimateCost(model: string, u: AiUsage): number | undefined {
-  const p = PRICES[model];
-  if (!p) return undefined;
+  const price = PRICES[model];
+  if (!price) return undefined;
+  const prompt = u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+  const p = price.long && prompt > price.long.above ? price.long.rates : price.base;
   return (
     (u.inputTokens * p.input + u.outputTokens * p.output + u.cacheReadTokens * p.cacheRead + u.cacheWriteTokens * p.cacheWrite) /
     1_000_000

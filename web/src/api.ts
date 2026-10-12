@@ -1,4 +1,5 @@
 import type {
+  AiEffort,
   AiSession,
   AiSessionSummary,
   AiStatus,
@@ -81,7 +82,7 @@ export const api = {
   aiSession: (id: string) => request<AiSession>(`/api/ai/sessions/${encodeURIComponent(id)}`),
   aiDeleteSession: (id: string) =>
     request<void>(`/api/ai/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  aiRun: (id: string, body: { prompt: string; path?: string; selection?: string }) =>
+  aiRun: (id: string, body: { prompt: string; path?: string; selection?: string; model?: string; effort?: AiEffort }) =>
     request<{ turnId: string }>(`/api/ai/sessions/${encodeURIComponent(id)}/runs`, {
       method: 'POST',
       body: JSON.stringify(body),

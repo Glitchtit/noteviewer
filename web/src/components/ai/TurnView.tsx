@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { estimateCost, type AiTurn, type ChangeRecord, type TurnItem, type UndoResolution, type UndoResult } from '@noteviewer/shared';
+import { modelLabel, type AiTurn, type ChangeRecord, type TurnItem, type UndoResolution, type UndoResult } from '@noteviewer/shared';
 import { renderAgentMarkdown } from '../../md/render';
 
 const TOOL_ICONS: Record<string, string> = {
@@ -188,19 +188,17 @@ function ChangeCard({
 
 export function TurnView({
   turn,
-  model,
   onOpenNote,
   onUndo,
   undoDisabled,
 }: {
   turn: AiTurn;
-  model: string;
   onOpenNote(target: string): void;
   onUndo(changeIds?: string[], resolution?: UndoResolution): Promise<UndoResult[]>;
   undoDisabled: boolean;
 }) {
   const usage = turn.usage;
-  const cost = usage ? estimateCost(model, usage) : undefined;
+  const cost = usage?.costUsd;
   const last = turn.items.at(-1);
   const working = turn.status === 'running' && (!last || last.kind !== 'text');
   return (
@@ -229,6 +227,7 @@ export function TurnView({
       )}
       {usage && turn.status !== 'running' && (
         <div className="ai-usage">
+          {turn.model && `${modelLabel(turn.model)}${turn.effort ? ` · ${turn.effort}` : ''} · `}
           {fmtTokens(usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens)} in · {fmtTokens(usage.outputTokens)} out
           {cost !== undefined && ` · ~$${cost < 0.01 ? cost.toFixed(3) : cost.toFixed(2)}`}
         </div>

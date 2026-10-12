@@ -6,7 +6,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { ZERO_USAGE, addUsage, foldEvent, type AgentEvent, type AiTurn, type UndoResolution, type UndoResult } from '@noteviewer/shared';
+import { ZERO_USAGE, addUsage, foldEvent, type AgentEvent, type AiEffort, type AiTurn, type UndoResolution, type UndoResult } from '@noteviewer/shared';
 import type { VaultCtx } from '../vault/ops.js';
 import { runAgent, type AgentClient, type AgentConfig } from './agent.js';
 import { undoChanges } from './journal.js';
@@ -57,7 +57,10 @@ export class RunManager {
     return s;
   }
 
-  start(id: string, input: { prompt: string; path?: string; selection?: string }): AiTurn {
+  start(
+    id: string,
+    input: { prompt: string; path?: string; selection?: string; model?: string; effort?: AiEffort },
+  ): AiTurn {
     if (!this.d.client) throw new NotConfiguredError();
     const session = this.session(id);
     if (this.active.has(id)) throw new RunBusyError();
@@ -65,10 +68,17 @@ export class RunManager {
     const context: AiTurn['context'] = {};
     if (input.path) context.path = input.path;
     if (input.selection?.trim()) context.selection = input.selection;
+    const config: AgentConfig = {
+      ...this.d.config,
+      model: input.model ?? this.d.config.model,
+      effort: input.effort ?? this.d.config.effort,
+    };
     const turn: AiTurn = {
       id: randomBytes(6).toString('base64url'),
       prompt: input.prompt,
       context,
+      model: config.model,
+      effort: config.effort,
       items: [],
       changes: [],
       status: 'running',
@@ -90,7 +100,7 @@ export class RunManager {
       try {
         result = await runAgent({
           client: this.d.client!,
-          config: this.d.config,
+          config,
           system: session.system,
           messages: session.messages,
           tools: new VaultTools(this.d.ctx, session.seen),

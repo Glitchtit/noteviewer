@@ -255,7 +255,12 @@ details.ai-tool { display: block; }
 }
 .ai-ask textarea:focus { border-color: var(--accent); outline: none; }
 .ai-ask-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ai-hint { color: var(--text-muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-pickers { display: flex; gap: 6px; min-width: 0; }
+.ai-pickers select {
+  min-width: 0; background: var(--bg); color: var(--text-muted); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 4px; font: inherit; font-size: 12px;
+}
+.ai-pickers select:hover, .ai-pickers select:focus { color: var(--text); border-color: var(--accent); outline: none; }
 @media (max-width: 768px) {
   .ai-panel { position: fixed; inset: 0; width: auto; z-index: 15; }
 }

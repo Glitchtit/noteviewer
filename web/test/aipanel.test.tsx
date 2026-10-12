@@ -38,7 +38,10 @@ class FakeEventSource {
   }
 }
 
-const enabled: AiStatus = { enabled: true, model: 'claude-opus-5-5', profileNote: 'AI Profile.md', profileExists: false, claudeMdExists: false };
+const enabled: AiStatus = {
+  enabled: true, model: 'claude-opus-5-5', profileNote: 'AI Profile.md', profileExists: false, claudeMdExists: false,
+  models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'], effort: 'high',
+};
 
 function session(turns: AiTurn[] = [], running = false): AiSession {
   return {
@@ -107,8 +110,43 @@ describe('AiPanel', () => {
     expect(props.saveNow).toHaveBeenCalled();
     expect(order).toEqual(['save', 'run']);
     expect(mocked.aiCreateSession).toHaveBeenCalled();
-    expect(mocked.aiRun).toHaveBeenCalledWith('s1', { prompt: 'Fix the typos', path: 'a.md', selection: 'picked' });
+    expect(mocked.aiRun).toHaveBeenCalledWith('s1', {
+      prompt: 'Fix the typos', path: 'a.md', selection: 'picked', model: 'claude-opus-5-5', effort: 'high',
+    });
     await waitFor(() => expect(lastSource().url).toBe('/api/ai/sessions/s1/events'));
+  });
+
+  it('sends the chosen model and effort and remembers them', async () => {
+    setup();
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'claude-haiku-5-5' } });
+    fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'low' } });
+    await sendPrompt('quick one');
+    expect(mocked.aiRun!.mock.calls[0]![1]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' });
+    expect(localStorage.getItem('noteviewer.ai.model')).toBe('claude-haiku-5-5');
+    expect(localStorage.getItem('noteviewer.ai.effort')).toBe('low');
+  });
+
+  it('restores remembered choices, ignoring models the server no longer offers', () => {
+    localStorage.setItem('noteviewer.ai.model', 'claude-sonnet-5-5');
+    localStorage.setItem('noteviewer.ai.effort', 'max');
+    setup();
+    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('claude-sonnet-5-5');
+    expect((screen.getByLabelText('Effort') as HTMLSelectElement).value).toBe('max');
+  });
+
+  it('falls back to the server default for an unknown remembered model', () => {
+    localStorage.setItem('noteviewer.ai.model', 'claude-retired-1');
+    setup();
+    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('claude-opus-5-5');
+  });
+
+  it('shows the model, effort and cost each turn ran with', async () => {
+    setup();
+    await sendPrompt('go');
+    const usage = { inputTokens: 1200, outputTokens: 300, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0.0123 };
+    lastSource().emit({ type: 'snapshot', session: session([turn({ model: 'claude-haiku-5-5', effort: 'low', usage })]) });
+    expect(await screen.findByText(/Haiku 5\.5 · low/)).toBeTruthy();
+    expect(screen.getByText(/~\$0\.01/)).toBeTruthy();
   });
 
   it('renders streamed text, thinking and tool rows', async () => {
@@ -210,6 +248,14 @@ describe('AiPanel', () => {
     mocked.aiUndo!.mockResolvedValueOnce({ results: [{ id: 'c1', status: 'undone' }] });
     fireEvent.click(await screen.findByRole('button', { name: 'Undo all' }));
     await waitFor(() => expect(mocked.aiUndo).toHaveBeenCalledWith('s1', 't1', {}));
+  });
+
+  it('lists a newly created session in the session picker', async () => {
+    setup();
+    mocked.aiSessions!.mockResolvedValue([{ id: 's1', title: 'Fix it', updatedAt: '', running: true }]);
+    await sendPrompt('Fix it');
+    await waitFor(() => expect((screen.getByLabelText('Session') as HTMLSelectElement).value).toBe('s1'));
+    expect(screen.getByRole('option', { name: /Fix it/ })).toBeTruthy();
   });
 
   it('starts a new session', async () => {
