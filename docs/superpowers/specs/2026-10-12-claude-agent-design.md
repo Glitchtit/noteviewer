@@ -199,10 +199,10 @@ headers by parsing each file (cached in memory after first load).
 | DELETE | `/api/ai/sessions/:id` | 409 while running |
 | POST | `/api/ai/sessions/:id/runs` | `{prompt, path?, selection?}` → 202 `{turnId}`; 409 if a run is active; 503 if no key |
 | POST | `/api/ai/sessions/:id/stop` | aborts the active run |
-| GET | `/api/ai/sessions/:id/events` | SSE: replays the active turn's events, then live; `: ping` every 25 s |
+| GET | `/api/ai/sessions/:id/events` | SSE: first a `snapshot {session}` (current folded state, including the active turn so far), then live events; `: ping` every 25 s |
 | POST | `/api/ai/sessions/:id/turns/:turnId/undo` | `{changeIds?: string[], resolution?: 'copy'|'overwrite'|'skip'}` |
 
-SSE event types (`AgentEvent` in `shared`):
+SSE event types (`AgentEvent` in `shared`): `snapshot {session}`,
 `turn_start`, `text_delta {itemId,text}`, `thinking_delta {itemId,text}`,
 `tool_start {itemId,name,input}`, `tool_end {itemId,summary,detail?,isError}`,
 `server_tool {itemId,name,query?|url?}` (web search/fetch), `change {record}`,
@@ -242,10 +242,11 @@ Undo is rejected (409) while a run is active on the session.
 
 - `start(sessionId, input)` → creates a `Turn`, persists, launches
   `runAgent` without awaiting; holds `{abort, events[], listeners}`.
-- Every event is appended to the turn's `events` buffer and fanned out;
-  `TurnItem`s/changes/usage are folded into the session and persisted
-  (debounced 500 ms; always on `turn_end`).
-- `subscribe(sessionId, fn)` replays buffered events of the active turn.
+- Every event is folded into the in-memory session with the shared pure
+  `foldEvent` (also used by the web client) and fanned out; the session is
+  persisted debounced 500 ms and always on `turn_end`.
+- `subscribe(sessionId, fn)` sends a `snapshot` of the folded session first,
+  so a reconnecting client never double-applies events.
 - `stop(sessionId)`; `shutdown()` aborts all, awaits persistence (wired to
   `app.addHook('onClose')`).
 - On server start, any stored turn with `status: 'running'` is marked
