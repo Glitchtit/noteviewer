@@ -114,6 +114,25 @@ describe('App', () => {
     expect(screen.getByTestId('mock-reading-view')).toBeTruthy();
   });
 
+  it('keeps expanded folders across a reload', async () => {
+    mocked.tree!.mockResolvedValue({
+      name: '', path: '', type: 'folder' as const,
+      children: [
+        {
+          name: 'sub', path: 'sub', type: 'folder' as const,
+          children: [{ name: 'inner.md', path: 'sub/inner.md', type: 'note' as const }],
+        },
+      ],
+    });
+    const first = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /sub/ }));
+    expect(screen.getByRole('button', { name: 'inner' })).toBeTruthy();
+    first.unmount();
+
+    render(<App />);
+    expect(await screen.findByRole('button', { name: 'inner' })).toBeTruthy();
+  });
+
   it('quietly forgets a remembered note that no longer exists', async () => {
     localStorage.setItem('noteviewer.lastNote', JSON.stringify({ path: 'gone.md', viewMode: 'edit' }));
     mocked.note!.mockRejectedValue(new ApiError(404, 'not found'));

@@ -83,6 +83,14 @@ test('reload keeps the open note, view mode and scroll position', async ({ page 
   await expect.poll(() => page.locator('.reading-view').evaluate((el) => el.scrollTop)).toBe(readTop);
 });
 
+test('reload keeps expanded tree folders', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /sub/ }).click();
+  await expect(page.getByRole('button', { name: 'Other', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Other', exact: true })).toBeVisible();
+});
+
 test('quick switcher opens notes', async ({ page }) => {
   await page.goto('/');
   // Wait for the app to mount (tree fetched, keydown listener attached)

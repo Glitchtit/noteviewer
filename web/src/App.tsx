@@ -17,7 +17,7 @@ import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
 import { exportPdf, type PdfOptions } from './exportPdf';
 import { isKanbanNote } from './kanban';
-import { loadLastNote, saveLastNote } from './readingPosition';
+import { loadExpandedFolders, loadLastNote, saveExpandedFolders, saveLastNote } from './readingPosition';
 import { resolveLink } from './resolveLink';
 
 type Naming = { mode: 'create'; folder?: string } | { mode: 'rename'; from: string } | null;
@@ -33,7 +33,7 @@ export function App() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expandedFolders, setExpandedFolders] = useState<ReadonlySet<string>>(new Set());
+  const [expandedFolders, setExpandedFolders] = useState<ReadonlySet<string>>(loadExpandedFolders);
   const [lastNote] = useState(loadLastNote);
   const [viewMode, setViewMode] = useState<'edit' | 'read'>(lastNote?.viewMode ?? 'edit');
   const [boardMode, setBoardMode] = useState(true);
@@ -111,6 +111,7 @@ export function App() {
   useEffect(() => {
     if (path) saveLastNote(path, viewMode);
   }, [path, viewMode]);
+  useEffect(() => saveExpandedFolders(expandedFolders), [expandedFolders]);
   // profileExists tracks the vault, so re-check whenever the tree changes
   useEffect(() => {
     if (aiOpen) api.aiStatus().then(setAiStatus).catch(() => {});

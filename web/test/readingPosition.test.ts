@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { loadLastNote, loadScroll, saveLastNote, saveScroll } from '../src/readingPosition';
+import {
+  loadExpandedFolders, loadLastNote, loadScroll, saveExpandedFolders, saveLastNote, saveScroll,
+} from '../src/readingPosition';
 
 beforeEach(() => localStorage.clear());
 
@@ -35,5 +37,15 @@ describe('readingPosition', () => {
     expect(loadScroll('n4.md', 'read')).toBeUndefined();
     expect(loadScroll('n5.md', 'read')).toBe(5);
     expect(loadScroll('n104.md', 'read')).toBe(104);
+  });
+
+  it('round-trips expanded folders and ignores junk', () => {
+    expect(loadExpandedFolders()).toEqual(new Set());
+    saveExpandedFolders(new Set(['Unraid', 'Unraid/Home Assistant']));
+    expect(loadExpandedFolders()).toEqual(new Set(['Unraid', 'Unraid/Home Assistant']));
+    localStorage.setItem('noteviewer.expandedFolders', JSON.stringify(['ok', 3, null]));
+    expect(loadExpandedFolders()).toEqual(new Set(['ok']));
+    localStorage.setItem('noteviewer.expandedFolders', '{bad');
+    expect(loadExpandedFolders()).toEqual(new Set());
   });
 });
