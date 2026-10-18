@@ -1,5 +1,6 @@
 import type { Root } from 'mdast';
 import { visit } from 'unist-util-visit';
+import { parseImageSize, splitImageAlt } from './imageSize';
 
 const WIKI = /(!?)\[\[([^\]|#\n]+)(#[^\]|\n]*)?(?:\|([^\]\n]*))?\]\]/g;
 
@@ -20,9 +21,13 @@ export function remarkWikilinks() {
         const cleanTarget = target!.trim();
         const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         if (bang === '!') {
+          const size = parseImageSize(alias);
+          const alt = !size && alias?.trim() ? alias.trim() : cleanTarget;
+          const dims =
+            (size?.width ? ` width="${size.width}"` : '') + (size?.height ? ` height="${size.height}"` : '');
           parts.push({
             type: 'html',
-            value: `<img class="internal-embed" data-target="${esc(cleanTarget)}" alt="${esc(cleanTarget)}">`,
+            value: `<img class="internal-embed" data-target="${esc(cleanTarget)}" alt="${esc(alt)}"${dims}>`,
           });
         } else {
           const label = (alias ?? cleanTarget).trim();
@@ -36,6 +41,16 @@ export function remarkWikilinks() {
       if (last < value.length) parts.push({ type: 'text', value: value.slice(last) });
       parent.children.splice(index, 1, ...(parts as never[]));
       return index + parts.length;
+    });
+    // ![alt|300](url): Obsidian puts the size in the alt text
+    visit(tree, 'image', (node) => {
+      const { alt, size } = splitImageAlt(node.alt ?? '');
+      if (!size) return;
+      node.alt = alt;
+      node.data = {
+        ...node.data,
+        hProperties: { ...node.data?.hProperties, width: size.width, height: size.height },
+      };
     });
   };
 }

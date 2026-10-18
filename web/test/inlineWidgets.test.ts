@@ -51,6 +51,15 @@ describe('inline widgets', () => {
     view.destroy();
   });
 
+  it('sizes embed image widgets from |width and still resolves the target', () => {
+    const view = viewWith('![[pic.png|300]]\n\nelsewhere', 20);
+    const img = view.dom.querySelector<HTMLImageElement>('img.cm-image');
+    expect(img).toBeTruthy();
+    expect(img!.getAttribute('src')).toBe('/api/file/sub/pic.png');
+    expect(img!.getAttribute('width')).toBe('300');
+    view.destroy();
+  });
+
   it('does not render math inside an inline code span', () => {
     const view = viewWith('use `$x$` literally\n\nelsewhere', 25);
     expect(view.dom.querySelector('.katex')).toBeFalsy();

@@ -10,6 +10,7 @@ import {
   WidgetType,
 } from '@codemirror/view';
 import { encodePath } from '../api';
+import { parseImageSize, splitImageAlt } from '../md/imageSize';
 
 const INLINE_MATH = /(?<!\$)\$([^$\n]+)\$(?!\$)/g;
 const MD_IMAGE = /!\[([^\]]*)\]\(([^)\n]+)\)/g;
@@ -71,16 +72,21 @@ class MathWidget extends WidgetType {
 }
 
 class ImageWidget extends WidgetType {
-  constructor(private src: string) {
+  constructor(
+    private src: string,
+    private size?: { width?: number; height?: number },
+  ) {
     super();
   }
   override eq(other: ImageWidget) {
-    return other.src === this.src;
+    return other.src === this.src && other.size?.width === this.size?.width && other.size?.height === this.size?.height;
   }
   toDOM() {
     const img = document.createElement('img');
     img.className = 'cm-image';
     img.src = this.src;
+    if (this.size?.width) img.width = this.size.width;
+    if (this.size?.height) img.height = this.size.height;
     return img;
   }
 }
@@ -119,7 +125,12 @@ export function inlineWidgets(opts: { resolveFile(target: string): string | unde
           d: Decoration.replace({ widget: new MathWidget(m[1]!) }),
         });
       }
-      const addImage = (start: number, matchLen: number, rawTarget: string) => {
+      const addImage = (
+        start: number,
+        matchLen: number,
+        rawTarget: string,
+        size?: { width?: number; height?: number },
+      ) => {
         if (lineTouched(view, start)) return;
         const isUrl = /^https?:\/\//.test(rawTarget);
         const resolved = isUrl ? rawTarget : opts.resolveFile(rawTarget);
@@ -129,11 +140,17 @@ export function inlineWidgets(opts: { resolveFile(target: string): string | unde
         entries.push({
           f: line.to,
           t: line.to,
-          d: Decoration.widget({ widget: new ImageWidget(src), side: 1, block: false }),
+          d: Decoration.widget({ widget: new ImageWidget(src, size), side: 1, block: false }),
         });
       };
-      for (const m of text.matchAll(MD_IMAGE)) addImage(from + m.index!, m[0].length, m[2]!.trim());
-      for (const m of text.matchAll(EMBED)) addImage(from + m.index!, m[0].length, m[1]!.trim());
+      for (const m of text.matchAll(MD_IMAGE)) {
+        addImage(from + m.index!, m[0].length, m[2]!.trim(), splitImageAlt(m[1]!).size);
+      }
+      for (const m of text.matchAll(EMBED)) {
+        // ![[target#heading|300]]: resolve the bare target, size from the alias
+        const [target, alias] = m[1]!.split('|', 2) as [string, string | undefined];
+        addImage(from + m.index!, m[0].length, target.split('#')[0]!.trim(), parseImageSize(alias));
+      }
     }
     entries.sort((a, b) => a.f - b.f || a.t - b.t);
     const builder = new RangeSetBuilder<Decoration>();

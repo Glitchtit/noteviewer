@@ -25,6 +25,28 @@ describe('renderMarkdown', () => {
     expect(html).toContain('data-target="pic.png"');
   });
 
+  it('applies Obsidian |width and |widthxheight sizes to embeds', async () => {
+    const w = await renderMarkdown('![[pic.png|300]]');
+    expect(w).toContain('data-target="pic.png"');
+    expect(w).toContain('width="300"');
+    expect(w).not.toContain('height=');
+    const wh = await renderMarkdown('![[pic.png|300x200]]');
+    expect(wh).toContain('width="300"');
+    expect(wh).toContain('height="200"');
+  });
+
+  it('uses a non-size embed alias as alt text', async () => {
+    const html = await renderMarkdown('![[pic.png|a caption]]');
+    expect(html).toContain('alt="a caption"');
+    expect(html).not.toContain('width=');
+  });
+
+  it('applies |width in markdown image alt text', async () => {
+    const html = await renderMarkdown('![logo|120](media/logo.png)');
+    expect(html).toContain('width="120"');
+    expect(html).toContain('alt="logo"');
+  });
+
   it('renders KaTeX math', async () => {
     const html = await renderMarkdown('Inline $x^2$ and\n\n$$\\sum_{i=0}^n i$$');
     expect(html).toContain('katex');
