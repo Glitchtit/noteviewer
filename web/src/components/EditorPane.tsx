@@ -9,6 +9,7 @@ import { inlineWidgets } from '../cm/inlineWidgets';
 import { livePreview } from '../cm/livePreview';
 import { cmTheme } from '../cm/theme';
 import { wikilinkExtensions } from '../cm/wikilinkPlugin';
+import { useScrollMemory } from '../hooks/useScrollMemory';
 
 export interface EditorPaneHandle {
   view: EditorView | null;
@@ -22,10 +23,12 @@ export interface EditorPaneProps {
   onOpenLink?(target: string): void;
   noteNames?: string[];
   resolveFile?(target: string): string | undefined;
+  /** note path to remember the scroll position under; omitted → not remembered */
+  scrollKey?: string;
 }
 
 export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function EditorPane(
-  { initialContent, onChange, onSave, onOpenLink, noteNames, resolveFile },
+  { initialContent, onChange, onSave, onOpenLink, noteNames, resolveFile, scrollKey },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -88,6 +91,24 @@ export const EditorPane = forwardRef<EditorPaneHandle, EditorPaneProps>(function
     // mount-only: content replacement happens via key-based remount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // stored as the document offset of the top visible line: pixel offsets
+  // drift while widgets and images settle their heights
+  useScrollMemory({
+    scroller: () => viewRef.current?.scrollDOM ?? null,
+    key: scrollKey,
+    view: 'edit',
+    position: () => {
+      const view = viewRef.current;
+      return view ? view.lineBlockAtHeight(view.scrollDOM.scrollTop).from : 0;
+    },
+    restore: (pos) => {
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({ effects: EditorView.scrollIntoView(Math.min(pos, view.state.doc.length), { y: 'start' }) });
+    },
+    ready: null,
+  });
 
   return <div ref={containerRef} className="editor" />;
 });

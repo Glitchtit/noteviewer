@@ -17,6 +17,7 @@ import { useNoteEditor } from './hooks/useNoteEditor';
 import { useVaultEvents } from './hooks/useVaultEvents';
 import { exportPdf, type PdfOptions } from './exportPdf';
 import { isKanbanNote } from './kanban';
+import { loadLastNote, saveLastNote } from './readingPosition';
 import { resolveLink } from './resolveLink';
 
 type Naming = { mode: 'create'; folder?: string } | { mode: 'rename'; from: string } | null;
@@ -33,7 +34,8 @@ export function App() {
   const [offline, setOffline] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<ReadonlySet<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'edit' | 'read'>('edit');
+  const [lastNote] = useState(loadLastNote);
+  const [viewMode, setViewMode] = useState<'edit' | 'read'>(lastNote?.viewMode ?? 'edit');
   const [boardMode, setBoardMode] = useState(true);
   const [overlay, setOverlay] = useState<'switcher' | 'search' | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -97,6 +99,18 @@ export function App() {
   });
 
   useEffect(() => refreshTree(), [refreshTree]);
+  // reopen whatever was open before a refresh; a note gone since then is
+  // forgotten quietly rather than shown as an error
+  useEffect(() => {
+    if (lastNote) editor.open(lastNote.path).catch(() => saveLastNote(null, 'edit'));
+    // mount-only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // only while a note is open: the startup restore must not be overwritten
+  // by the empty state before it lands
+  useEffect(() => {
+    if (path) saveLastNote(path, viewMode);
+  }, [path, viewMode]);
   // profileExists tracks the vault, so re-check whenever the tree changes
   useEffect(() => {
     if (aiOpen) api.aiStatus().then(setAiStatus).catch(() => {});
@@ -444,7 +458,12 @@ export function App() {
           kanban && boardMode ? (
             <KanbanBoard content={editor.getBuffer()} onChange={(md) => editor.applyLocalContent(md)} />
           ) : viewMode === 'read' ? (
-            <ReadingView content={editor.getBuffer()} tree={tree} onOpenNote={(p) => void openNote(p)} />
+            <ReadingView
+              content={editor.getBuffer()}
+              tree={tree}
+              onOpenNote={(p) => void openNote(p)}
+              scrollKey={path}
+            />
           ) : (
             <EditorPane
               ref={editorRef}
@@ -455,6 +474,7 @@ export function App() {
               onOpenLink={(t) => { const r = tree && resolveLink(tree, t); if (r) void openNote(r); }}
               noteNames={noteNames}
               resolveFile={(t) => (tree ? resolveLink(tree, t) : undefined)}
+              scrollKey={path}
             />
           )
         ) : (

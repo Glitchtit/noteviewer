@@ -5,6 +5,10 @@ rmSync('e2e/.data', { recursive: true, force: true });
 mkdirSync('e2e/.vault/sub', { recursive: true });
 writeFileSync('e2e/.vault/Welcome.md', '# Welcome\n\nHello from the fixture vault. See [[sub/Other]].\n');
 writeFileSync('e2e/.vault/sub/Other.md', '# Other\n\nAnother note.\n');
+writeFileSync(
+  'e2e/.vault/Long.md',
+  `# Long\n\n${Array.from({ length: 300 }, (_, i) => `Paragraph line ${i + 1}.`).join('\n\n')}\n`,
+);
 writeFileSync('e2e/.vault/Rich.md', '# Rich\n\nSome **bold** text with [[Welcome]] and math $x^2$.\n');
 writeFileSync(
   'e2e/.vault/Board.md',

@@ -80,6 +80,7 @@ function noteResponse(path: string, content: string) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   Object.values(mocked).forEach((fn) => fn.mockReset());
   mocked.tree!.mockResolvedValue(tree);
 });
@@ -96,6 +97,30 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'a' }));
     await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
     expect(mocked.note).toHaveBeenCalledWith('a.md');
+  });
+
+  it('reopens the last note in its view mode after a reload', async () => {
+    mocked.note!.mockResolvedValue(noteResponse('a.md', '# A note'));
+    const first = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a' }));
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle reading mode' }));
+    first.unmount();
+
+    mocked.note!.mockClear();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('note-title').textContent).toBe('a'));
+    expect(mocked.note).toHaveBeenCalledWith('a.md');
+    expect(screen.getByTestId('mock-reading-view')).toBeTruthy();
+  });
+
+  it('quietly forgets a remembered note that no longer exists', async () => {
+    localStorage.setItem('noteviewer.lastNote', JSON.stringify({ path: 'gone.md', viewMode: 'edit' }));
+    mocked.note!.mockRejectedValue(new ApiError(404, 'not found'));
+    render(<App />);
+    await waitFor(() => expect(mocked.note).toHaveBeenCalledWith('gone.md'));
+    await waitFor(() => expect(localStorage.getItem('noteviewer.lastNote')).toBeNull());
+    expect(screen.queryByTestId('action-error')).toBeNull();
   });
 
   it('starts with folders collapsed and expands/collapses all from the header', async () => {

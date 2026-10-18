@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TreeNode } from '@noteviewer/shared';
+import { useScrollMemory } from '../hooks/useScrollMemory';
 import { enhanceRendered, type EmbedUrl } from '../md/enhance';
 import { renderMarkdown } from '../md/render';
 import { resolveLink } from '../resolveLink';
@@ -11,9 +12,11 @@ export interface ReadingViewProps {
   onOpenNote?(path: string): void;
   /** overrides tree-based `![[embed]]` resolution, e.g. token-scoped public URLs */
   embedUrl?: EmbedUrl;
+  /** note path to remember the scroll position under; omitted → not remembered */
+  scrollKey?: string;
 }
 
-export function ReadingView({ content, tree, onOpenNote, embedUrl }: ReadingViewProps) {
+export function ReadingView({ content, tree, onOpenNote, embedUrl, scrollKey }: ReadingViewProps) {
   const [html, setHtml] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef(tree);
@@ -39,6 +42,17 @@ export function ReadingView({ content, tree, onOpenNote, embedUrl }: ReadingView
     if (!el || !html) return;
     void enhanceRendered(el, treeRef.current, 'dark', embedRef.current);
   }, [html]);
+
+  useScrollMemory({
+    scroller: () => containerRef.current,
+    key: scrollKey,
+    view: 'read',
+    position: () => containerRef.current?.scrollTop ?? 0,
+    restore: (top) => {
+      if (containerRef.current) containerRef.current.scrollTop = top;
+    },
+    ready: html,
+  });
 
   function onClick(e: React.MouseEvent) {
     const a = (e.target as HTMLElement).closest('a.internal-link');

@@ -51,6 +51,38 @@ test('reading mode renders formatting and navigates wikilinks', async ({ page })
   await expect(page.getByTestId('note-title')).toHaveText('Welcome');
 });
 
+test('reload keeps the open note, view mode and scroll position', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Long', exact: true }).click();
+  await expect(page.locator('.cm-content')).toContainText('Paragraph line 1.');
+
+  // edit mode: scroll the editor, reload, same top line
+  await page.locator('.cm-scroller').hover();
+  await page.mouse.wheel(0, 3000);
+  await page.waitForTimeout(400);
+  const editTop = await page.locator('.cm-scroller').evaluate((el) => el.scrollTop);
+  expect(editTop).toBeGreaterThan(1000);
+  await page.reload();
+  await expect(page.getByTestId('note-title')).toHaveText('Long');
+  await expect
+    .poll(() => page.locator('.cm-scroller').evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(editTop - 100);
+
+  // reading mode: scroll, reload, back in reading mode at the same spot
+  await page.getByRole('button', { name: 'Toggle reading mode' }).click();
+  const reading = page.locator('.reading-view');
+  await expect(reading).toContainText('Paragraph line 300.');
+  await reading.hover();
+  await page.mouse.wheel(0, 4000);
+  await page.waitForTimeout(400);
+  const readTop = await reading.evaluate((el) => el.scrollTop);
+  expect(readTop).toBeGreaterThan(1000);
+  await page.reload();
+  await expect(page.getByTestId('note-title')).toHaveText('Long');
+  await expect(page.locator('.reading-view')).toContainText('Paragraph line 300.');
+  await expect.poll(() => page.locator('.reading-view').evaluate((el) => el.scrollTop)).toBe(readTop);
+});
+
 test('quick switcher opens notes', async ({ page }) => {
   await page.goto('/');
   // Wait for the app to mount (tree fetched, keydown listener attached)
